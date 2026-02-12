@@ -256,6 +256,8 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
   tref <- sum(df$Tax_Effect[df$Tax_Effect > 0])
   tpay <- sum(abs(df$Tax_Effect[df$Tax_Effect < 0]))
   tatcf <- sum(df$After_Tax_CF)
+  # Cash-on-Cash Return: year-1 after-tax CF / initial equity
+  coc <- if (total_investment > 0) df$After_Tax_CF[1] / total_investment else 0
 
   list(tax_details = df, cashflows = cfs,
        irr_after_tax = round(irr * 100, 2),
@@ -267,6 +269,7 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
        selling_costs = round(selling_costs),
        net_sale = round(ns), capital_gains_tax = round(cgt),
        remaining_loan = round(rem),
+       coc_return = round(coc * 100, 2),
        after_tax_profit = round(tatcf + ns - total_investment))
 }
 

@@ -427,16 +427,19 @@ server <- function(input, output, session) {
     fluidRow(
       column(3, div(class = "metric-card", style = "background:#d4edda;",
         help("help_irr"), h5(t$irr_title), h3(textOutput("v_irr")))),
-      column(3, div(class = "metric-card", style = "background:#d1ecf1;",
+      column(2, div(class = "metric-card", style = "background:#d1ecf1;",
         help("help_irr_at"), h5(t$irr_aftertax_title), h3(textOutput("v_irr_at")))),
+      column(2, div(class = "metric-card", style = "background:#e8daef;",
+        help("help_coc"), h5(t$coc_title), h3(textOutput("v_coc")))),
       column(3, div(class = "metric-card", style = "background:#fff3cd;",
         help("help_profit"), h5(t$total_profit_title), h3(textOutput("v_profit")))),
-      column(3, div(class = "metric-card", style = "background:#f8d7da;",
+      column(2, div(class = "metric-card", style = "background:#f8d7da;",
         help("help_mp"), h5(t$monthly_payment_title), h3(textOutput("v_mp"))))
     )
   })
   output$v_irr    <- renderText({ r <- roi(); req(r); paste0(r$irr, "%") })
   output$v_irr_at <- renderText({ tx <- tax(); req(tx); paste0(tx$irr_after_tax, "%") })
+  output$v_coc    <- renderText({ tx <- tax(); req(tx); paste0(tx$coc_return, "%") })
   output$v_profit <- renderText({ tx <- tax(); req(tx); fmt_eur(tx$after_tax_profit) })
   output$v_mp     <- renderText({ r <- roi(); req(r); fmt_eur(r$monthly_payment) })
 
@@ -559,6 +562,27 @@ server <- function(input, output, session) {
       tags$div(class = "calc-section", t$mdl_result),
       div(class = "calc-result", style = "background:#f8d7da; color:#721c24;",
           paste0(t$monthly_payment_title, " = ", fmt_eur(r$monthly_payment, 2)))
+    ))
+  })
+
+  # ---- Modal 5: Cash-on-Cash Return ----
+  observeEvent(input$help_coc, {
+    t <- tr(); tx <- tax(); p <- params()
+    yr1cf <- tx$tax_details$After_Tax_CF[1]
+    showModal(modalDialog(title = t$modal_coc_title, size = "l", easyClose = TRUE,
+      footer = modalButton(t$mdl_close),
+      tags$div(class = "calc-section", t$mdl_formula),
+      div(class = "calc-formula", t$mdl_coc_formula),
+      div(style = "font-size:12px; color:#777; margin:4px 0 8px 0;", t$mdl_coc_note),
+      tags$div(class = "calc-section", t$mdl_inputs),
+      stp(t$mdl_coc_yr1cf,  fmt_eur(yr1cf)),
+      stp(t$mdl_coc_equity, fmt_eur(p$total_investment)),
+      tags$div(class = "calc-section", t$mdl_steps),
+      stp("CoC", paste0(fmt_eur(yr1cf), " \u00F7 ", fmt_eur(p$total_investment),
+        " = ", tx$coc_return, "%")),
+      tags$div(class = "calc-section", t$mdl_result),
+      div(class = "calc-result", style = "background:#e8daef; color:#6c3483;",
+          paste0(t$coc_title, " = ", tx$coc_return, "%"))
     ))
   })
 
@@ -883,7 +907,9 @@ server <- function(input, output, session) {
       mr(t$lbl_cg_tax,          fmt_eur(tx$capital_gains_tax)),
       tags$tr(tags$td(colspan = "2", tags$hr(style = "margin:4px 0"))),
       mr(t$lbl_total_return, tags$span(style = "color:#27ae60;", fmt_eur(total_ret))),
-      mr(t$lbl_net_profit, tags$span(style = "color:#27ae60; font-size:16px;", fmt_eur(tx$after_tax_profit)))
+      mr(t$lbl_net_profit, tags$span(style = "color:#27ae60; font-size:16px;", fmt_eur(tx$after_tax_profit))),
+      tags$tr(tags$td(colspan = "2", tags$hr(style = "margin:4px 0"))),
+      mr(t$coc_title, tags$span(style = "color:#6c3483; font-weight:700;", paste0(tx$coc_return, "%")))
     )
   })
 
@@ -1067,6 +1093,7 @@ server <- function(input, output, session) {
       bar(),
       ln(t$stab_irr_pre,        paste0(r$irr, "%")),
       ln(t$stab_irr_post,       paste0(tx$irr_after_tax, "%")),
+      ln(t$stab_coc,            paste0(tx$coc_return, "%")),
       ln(t$stab_simple_return,  paste0(r$simple_annualized, "%")),
       blank,
       bar("="),
