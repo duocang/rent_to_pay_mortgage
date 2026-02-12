@@ -66,6 +66,24 @@ ui <- fluidPage(
       padding:8px; margin-top:6px; border-radius:6px; }
     .calc-section { font-weight:700; font-size:13px; margin:12px 0 4px 0;
       padding-bottom:3px; border-bottom:2px solid #eee; color:#2c3e50; }
+    .rpt-wrap { font-family:'SF Mono','Consolas','Courier New',monospace;
+      font-size:13px; line-height:1.65; background:#fafbfc;
+      border:1px solid #e1e4e8; border-radius:8px;
+      padding:20px 24px; max-width:720px; margin:0 auto;
+      white-space:pre-wrap; word-break:break-word; }
+    .rpt-title { text-align:center; font-size:16px; font-weight:700;
+      margin-bottom:2px; }
+    .rpt-subtitle { text-align:center; font-size:12px; color:#666;
+      margin-bottom:14px; }
+    .rpt-sec { font-weight:700; color:#2c3e50; border-bottom:1px solid #ddd;
+      margin:14px 0 6px 0; padding-bottom:3px; }
+    .rpt-row { display:flex; justify-content:space-between; padding:1px 0; }
+    .rpt-row .lbl { color:#555; }
+    .rpt-row .val { font-weight:600; text-align:right; }
+    .rpt-row.highlight .val { color:#27ae60; font-size:14px; }
+    .rpt-row.warn .val { color:#e74c3c; }
+    .rpt-divider { border-top:1px dashed #ccc; margin:4px 0; }
+    .rpt-note { font-size:11px; color:#888; margin-top:2px; }
     #lang-container {
       position: absolute; top: 15px; right: 30px; z-index: 1000;
       display: flex; gap: 10px;
@@ -534,7 +552,11 @@ server <- function(input, output, session) {
         fluidRow(column(12, plotlyOutput("pl_hold", height = "360px"))), br(),
         uiOutput("ui_insights")
       ),
-      # ---- Tab 4: Data Tables ----
+      # ---- Tab 4: Summary Report ----
+      tabPanel(t$tab_summary, br(),
+        uiOutput("ui_summary_report")
+      ),
+      # ---- Tab 5: Data Tables ----
       tabPanel(t$tab_data, br(),
         h5(t$data_basic_title), DTOutput("tbl_basic"), br(),
         h5(t$data_tax_title),   DTOutput("tbl_tax_full")
@@ -836,6 +858,107 @@ server <- function(input, output, session) {
                   color = styleInterval(0, c("#e74c3c", "#27ae60")),
                   fontWeight = "bold")
   })
+  # ============================================================================
+  # SUMMARY REPORT TAB
+  # ============================================================================
+  output$ui_summary_report <- renderUI({
+    t <- tr(); p <- params(); r <- roi(); tx <- tax()
+    lang <- input$lang; if (is.null(lang)) lang <- "CN"
+    yr_suffix <- if (lang == "DE") " J." else if (lang == "EN") " yrs" else " \u5e74"
+
+    # helpers
+    rr  <- function(lbl, val, cls = "") tags$div(class = paste("rpt-row", cls),
+      tags$span(class = "lbl", lbl), tags$span(class = "val", val))
+    sec <- function(lbl) tags$div(class = "rpt-sec", lbl)
+    dv  <- function() tags$div(class = "rpt-divider")
+
+    # derived values
+    gain <- p$sale_price - p$purchase_price
+    end_rent <- p$initial_rent + p$annual_rent_increase * max(0, p$hold_years - 1)
+    mode_txt <- if (p$prepay_with_excess) t$stab_mode_prepay else t$stab_mode_hold
+    net_tax <- tx$total_refunds - tx$total_payments
+    net_tax_sign <- if (net_tax >= 0) "+" else ""
+    total_cash <- r$excess_cash + r$net_sale_proceed
+    cg_note <- if (p$hold_years >= 10) paste0("\u2705 \u00a723 EStG") else
+               if (tx$capital_gains_tax > 0) paste0("\u26a0\ufe0f ", fmt_eur(tx$capital_gains_tax)) else "0 \u20ac"
+
+    div(class = "rpt-wrap",
+      # ---- Header ----
+      tags$div(class = "rpt-title", t$stab_title),
+      tags$div(class = "rpt-subtitle", mode_txt),
+
+      # ---- Property ----
+      sec(paste0("\U0001F3E0 ", t$stab_sec_property)),
+      rr(t$stab_purchase,     fmt_eur(p$purchase_price)),
+      rr(t$stab_sale,         fmt_eur(p$sale_price)),
+      rr(t$stab_appreciation, paste0(fmt_eur(gain), "  (", round(gain / p$purchase_price * 100, 1), "%)"),
+         if (gain >= 0) "highlight" else "warn"),
+      rr(t$stab_hold,         paste0(p$hold_years, yr_suffix)),
+      dv(),
+
+      # ---- Loan ----
+      sec(paste0("\U0001F3E6 ", t$stab_sec_loan)),
+      rr(t$stab_loan_amount,  fmt_eur(p$loan_amount)),
+      rr(t$stab_rate,         paste0(p$annual_rate * 100, "%")),
+      rr(t$stab_term,         paste0(p$loan_term_years, yr_suffix)),
+      rr(t$stab_monthly_pmt,  fmt_eur(r$monthly_payment, 2)),
+      rr(t$stab_remaining,    fmt_eur(r$remaining_loan)),
+      dv(),
+
+      # ---- Rental ----
+      sec(paste0("\U0001F4B0 ", t$stab_sec_rental)),
+      rr(t$stab_start_rent,    fmt_eur(p$initial_rent)),
+      rr(t$stab_rent_increase, paste0("+", fmt_eur(p$annual_rent_increase), "/yr")),
+      rr(t$stab_end_rent,      fmt_eur(end_rent)),
+      rr(t$stab_total_rent,    fmt_eur(r$total_rent_collected)),
+      rr(t$stab_total_mortgage, fmt_eur(r$total_mortgage_paid)),
+      dv(),
+
+      # ---- Investment & Returns ----
+      sec(paste0("\U0001F4CA ", t$stab_sec_invest)),
+      rr(t$stab_downpayment,   fmt_eur(p$total_investment)),
+      rr(t$stab_oop,           fmt_eur(r$out_of_pocket_extra)),
+      rr(t$stab_total_in,      fmt_eur(r$actual_total_in)),
+      tags$div(class = "rpt-divider"),
+      rr(t$stab_excess_cash,   fmt_eur(r$excess_cash)),
+      rr(t$stab_net_sale,      fmt_eur(r$net_sale_proceed)),
+      rr(t$stab_total_cash,    fmt_eur(total_cash)),
+      tags$div(class = "rpt-divider"),
+      rr(t$stab_total_profit,  fmt_eur(r$total_profit), "highlight"),
+      dv(),
+
+      # ---- Tax ----
+      sec(paste0("\U0001F4CB ", t$stab_sec_tax)),
+      rr(t$stab_building_val,   fmt_eur(tx$building_value)),
+      rr(t$stab_annual_afa,     fmt_eur(tx$annual_afa)),
+      rr(t$stab_annual_opcost,  fmt_eur(p$operating_costs)),
+      rr(t$stab_marginal_rate,  paste0(p$combined_tax_rate * 100, "%")),
+      tags$div(class = "rpt-divider"),
+      rr(t$stab_total_refund,   paste0("+", fmt_eur(tx$total_refunds))),
+      rr(t$stab_total_payment,  paste0("\u2212", fmt_eur(tx$total_payments))),
+      rr(t$stab_net_tax,        paste0(net_tax_sign, fmt_eur(abs(net_tax))),
+         if (net_tax >= 0) "highlight" else "warn"),
+      rr(t$stab_cg_tax,         cg_note, if (tx$capital_gains_tax > 0) "warn" else ""),
+      rr(t$stab_profit_at,      fmt_eur(tx$after_tax_profit), "highlight"),
+      dv(),
+
+      # ---- Returns ----
+      sec(paste0("\u2b50 ", t$stab_sec_return)),
+      rr(t$stab_irr_pre,        paste0(r$irr, "%"), "highlight"),
+      rr(t$stab_irr_post,       paste0(tx$irr_after_tax, "%"), "highlight"),
+      rr(t$stab_simple_return,  paste0(r$simple_annualized, "%")),
+      dv(),
+
+      # ---- Notes ----
+      sec(paste0("\U0001F4AC ", t$stab_sec_note)),
+      tags$div(class = "rpt-note", paste0("1. ", t$stab_note_1)),
+      tags$div(class = "rpt-note", paste0("2. ", t$stab_note_2)),
+      tags$div(class = "rpt-note", paste0("3. ", t$stab_note_3)),
+      tags$div(class = "rpt-note", paste0("4. ", t$stab_note_4)),
+      tags$div(class = "rpt-note", paste0("5. ", t$stab_note_5))
+    )
+  })
+
 }
 
 shinyApp(ui, server)
