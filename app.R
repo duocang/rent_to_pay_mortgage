@@ -119,6 +119,8 @@ ui <- fluidPage(
       numericInput("loan_amount", "贷款金额 (万元)", 20, step = 1),
       numericInput("annual_rate", "贷款年利率 (%)", 3.84, step = 0.01),
       numericInput("loan_term_years", "贷款年限 (年)", 20, step = 1),
+      numericInput("zinsbindung_years", "固定利率期 (年)", 10, step = 1),
+      numericInput("refi_rate", "再融资利率 (%)", 4.5, step = 0.1),
       hr(),
       tags$div(class = "sec-hdr", uiOutput("sec2", inline = TRUE)),
       numericInput("start_year", "起始年份", as.integer(format(Sys.Date(), "%Y")), step = 1),
@@ -173,7 +175,8 @@ server <- function(input, output, session) {
     updateNumericInput(session, "extra_costs",    label = t$extra_costs,    value = m$ec, step = m$se)
     updateNumericInput(session, "loan_amount",    label = t$loan_amount,    value = m$la, step = m$s)
     updateNumericInput(session, "sale_price",     label = t$sale_price,     value = m$sp, step = m$s)
-    for (nm in c("annual_rate","loan_term_years","start_year","initial_rent",
+    for (nm in c("annual_rate","loan_term_years","zinsbindung_years","refi_rate",
+                 "start_year","initial_rent",
                  "monthly_utilities","annual_rent_increase","hold_years"))
       updateNumericInput(session, nm, label = t[[nm]])
     updateNumericInput(session, "monthly_salary",     label = t$monthly_salary)
@@ -264,6 +267,8 @@ server <- function(input, output, session) {
       vacancy_rate       = input$vacancy_rate / 100,
       sondertilgung_rate = input$sondertilgung_rate / 100,
       opcost_inflation   = input$opcost_inflation / 100,
+      zinsbindung_years  = input$zinsbindung_years,
+      refi_rate          = input$refi_rate / 100,
       start_year = input$start_year,
       down_payment = input$purchase_price * m - input$loan_amount * m,
       total_investment = (input$purchase_price * m - input$loan_amount * m) + input$extra_costs * m
@@ -312,7 +317,8 @@ server <- function(input, output, session) {
       p$loan_term_years, p$hold_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
       p$combined_tax_rate, p$prepay_with_excess, p$monthly_utilities,
-      p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation)
+      p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,
+      p$zinsbindung_years, p$refi_rate)
   }, ignoreNULL = FALSE)
 
   sens_rt <- eventReactive(input$calc_btn, {
@@ -322,7 +328,8 @@ server <- function(input, output, session) {
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
       p$operating_costs, p$combined_tax_rate,
       p$prepay_with_excess, p$monthly_utilities,
-      p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation)
+      p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,
+      p$zinsbindung_years, p$refi_rate)
   }, ignoreNULL = FALSE)
 
   hold_an <- eventReactive(input$calc_btn, {
@@ -333,6 +340,7 @@ server <- function(input, output, session) {
       p$operating_costs, p$combined_tax_rate,
       p$prepay_with_excess, p$monthly_utilities,
       p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,
+      p$zinsbindung_years, p$refi_rate,
       base_hold = p$hold_years)
   }, ignoreNULL = FALSE)
 
@@ -937,6 +945,10 @@ server <- function(input, output, session) {
       ln(t$stab_loan_amount,  paste0(eur(p$loan_amount), " EUR")),
       ln(t$stab_rate,         paste0(p$annual_rate * 100, "%")),
       ln(t$stab_term,         paste0(p$loan_term_years, yr_s)),
+      if (p$zinsbindung_years < p$loan_term_years)
+        ln(t$stab_zinsbindung, paste0(p$zinsbindung_years, yr_s)) else NULL,
+      if (p$zinsbindung_years < p$loan_term_years)
+        ln(t$stab_refi_rate,   paste0(p$refi_rate * 100, "%")) else NULL,
       ln(t$stab_monthly_pmt,  paste0(eur2(r$monthly_payment), " EUR")),
       ln(t$stab_remaining,    paste0(eur(r$remaining_loan), " EUR")),
       blank,

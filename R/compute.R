@@ -35,13 +35,22 @@ compute_basic_roi <- function(purchase_price, down_payment, extra_costs,
                               selling_cost_rate  = 0,
                               vacancy_rate       = 0,
                               sondertilgung_rate = 0.05,
-                              opcost_inflation   = 0) {
+                              opcost_inflation   = 0,
+                              zinsbindung_years  = NULL,
+                              refi_rate          = NULL) {
+
+  # Zinsbindung defaults: full-term fixed if not specified
+  if (is.null(zinsbindung_years) || zinsbindung_years >= loan_term_years)
+    zinsbindung_years <- loan_term_years
+  if (is.null(refi_rate)) refi_rate <- annual_rate
 
   total_inv <- down_payment + extra_costs
   mr        <- annual_rate / 12
   n_total   <- loan_term_years * 12
   mp        <- annuity_payment(loan_amount, annual_rate, loan_term_years)
-  annual_prepay_cap <- loan_amount * sondertilgung_rate  # e.g. 5% of original
+  mp_initial <- mp
+  annual_prepay_cap <- loan_amount * sondertilgung_rate
+  refi_done <- FALSE
 
   bal <- loan_amount
   tot_rent <- 0; tot_mort <- 0; oop <- 0; exc <- 0; tot_pre <- 0
@@ -52,6 +61,13 @@ compute_basic_roi <- function(purchase_price, down_payment, extra_costs,
 
   for (yr in seq_len(hold_years)) {
     if (yr > 1) rent <- rent + annual_rent_increase
+    # Refinancing at start of year after Zinsbindung expires
+    if (!refi_done && yr > zinsbindung_years && bal > 0) {
+      mr <- refi_rate / 12
+      rem_years <- loan_term_years - zinsbindung_years
+      if (rem_years > 0) mp <- annuity_payment(bal, refi_rate, rem_years)
+      refi_done <- TRUE
+    }
     y_rent <- 0; y_mort <- 0; y_oop <- 0; y_exc <- 0; y_pre <- 0
     # vacancy: skip some months of rent
     vacancy_months <- round(12 * vacancy_rate)
@@ -137,13 +153,20 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
                                  selling_cost_rate  = 0,
                                  vacancy_rate       = 0,
                                  sondertilgung_rate = 0.05,
-                                 opcost_inflation   = 0) {
+                                 opcost_inflation   = 0,
+                                 zinsbindung_years  = NULL,
+                                 refi_rate          = NULL) {
+
+  if (is.null(zinsbindung_years) || zinsbindung_years >= loan_term_years)
+    zinsbindung_years <- loan_term_years
+  if (is.null(refi_rate)) refi_rate <- annual_rate
 
   mr  <- annual_rate / 12
   mp  <- annuity_payment(loan_amount, annual_rate, loan_term_years)
   bv  <- purchase_price * building_ratio
   afa <- bv * afa_rate
   annual_prepay_cap <- loan_amount * sondertilgung_rate
+  refi_done <- FALSE
 
   bal  <- loan_amount
   rent <- initial_rent
@@ -153,6 +176,13 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
 
   for (yr in seq_len(hold_years)) {
     if (yr > 1) rent <- rent + annual_rent_increase
+    # Refinancing at start of year after Zinsbindung expires
+    if (!refi_done && yr > zinsbindung_years && bal > 0) {
+      mr <- refi_rate / 12
+      rem_years <- loan_term_years - zinsbindung_years
+      if (rem_years > 0) mp <- annuity_payment(bal, refi_rate, rem_years)
+      refi_done <- TRUE
+    }
     # operating costs inflate each year
     yr_opcost <- operating_costs * (1 + opcost_inflation)^(yr - 1)
 
@@ -251,13 +281,16 @@ compute_sens_opcost <- function(purchase_price, loan_amount, annual_rate,
                                 vacancy_rate       = 0,
                                 sondertilgung_rate = 0.05,
                                 opcost_inflation   = 0,
+                                zinsbindung_years  = NULL,
+                                refi_rate          = NULL,
                                 oc_range = seq(2000, 10000, 500)) {
   do.call(rbind, lapply(oc_range, function(oc) {
     r <- compute_tax_analysis(purchase_price, loan_amount, annual_rate,
            loan_term_years, hold_years, initial_rent, annual_rent_increase,
            sale_price, total_investment, building_ratio, afa_rate, oc,
            combined_tax_rate, prepay_with_excess, monthly_utilities,
-           selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation)
+           selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation,
+           zinsbindung_years, refi_rate)
     data.frame(Operating_Costs = oc, IRR = r$irr_after_tax)
   }))
 }
@@ -274,13 +307,16 @@ compute_sens_rate <- function(purchase_price, loan_amount, annual_rate,
                               vacancy_rate       = 0,
                               sondertilgung_rate = 0.05,
                               opcost_inflation   = 0,
+                              zinsbindung_years  = NULL,
+                              refi_rate          = NULL,
                               rate_range = seq(0.02, 0.06, 0.005)) {
   do.call(rbind, lapply(rate_range, function(rt) {
     r <- compute_tax_analysis(purchase_price, loan_amount, rt,
            loan_term_years, hold_years, initial_rent, annual_rent_increase,
            sale_price, total_investment, building_ratio, afa_rate, operating_costs,
            combined_tax_rate, prepay_with_excess, monthly_utilities,
-           selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation)
+           selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation,
+           zinsbindung_years, refi_rate)
     data.frame(Rate = rt * 100, IRR = r$irr_after_tax)
   }))
 }
@@ -297,6 +333,8 @@ compute_hold_analysis <- function(purchase_price, loan_amount, annual_rate,
                                   vacancy_rate       = 0,
                                   sondertilgung_rate = 0.05,
                                   opcost_inflation   = 0,
+                                  zinsbindung_years  = NULL,
+                                  refi_rate          = NULL,
                                   base_hold = 10, hold_range = 5:15) {
   apr <- (sale_price / purchase_price)^(1 / base_hold) - 1
 
@@ -306,7 +344,8 @@ compute_hold_analysis <- function(purchase_price, loan_amount, annual_rate,
             loan_term_years, hy, initial_rent, annual_rent_increase, sp,
             total_investment, building_ratio, afa_rate, operating_costs,
             combined_tax_rate, prepay_with_excess, monthly_utilities,
-            selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation)
+            selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation,
+            zinsbindung_years, refi_rate)
     data.frame(Hold_Years = hy, IRR = r$irr_after_tax,
                CG_Tax = r$capital_gains_tax, Net_Sale = r$net_sale)
   }))
