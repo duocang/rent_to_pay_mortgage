@@ -46,9 +46,26 @@ ui <- fluidPage(
                 border-radius: 0 6px 6px 0; font-size: 13px; }
     .note-green { border-color: #27ae60; background: #eafaf1; }
     .note-blue  { border-color: #2980b9; background: #eaf2f8; }
-    .metric-card { text-align: center; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
+    .metric-card { text-align: center; padding: 10px; border-radius: 6px; margin-bottom: 10px; position: relative; }
     .metric-card h5 { font-size: 13px; margin-bottom: 2px; }
     .metric-card h3 { margin: 0; font-size: 22px; }
+    .help-btn { position:absolute; top:5px; right:7px; width:20px; height:20px;
+      border-radius:50%; border:1.5px solid rgba(0,0,0,.2); background:rgba(255,255,255,.7);
+      font-size:12px; line-height:17px; text-align:center; cursor:pointer;
+      color:#555; font-weight:700; transition:all .2s; padding:0; }
+    .help-btn:hover { background:#2c3e50; color:#fff; border-color:#2c3e50; }
+    .calc-step { display:flex; justify-content:space-between; padding:4px 0;
+      border-bottom:1px solid #f0f0f0; font-size:13px; }
+    .calc-step:last-child { border-bottom:none; }
+    .calc-step .lbl { color:#555; }
+    .calc-step .val { font-weight:600; font-family:'SF Mono','Consolas',monospace; }
+    .calc-formula { background:#f8f9fa; border-radius:6px; padding:10px 14px;
+      font-family:'SF Mono','Consolas',monospace; font-size:12px;
+      margin:8px 0; border-left:3px solid #3498db; line-height:1.7; }
+    .calc-result { font-size:18px; font-weight:700; text-align:center;
+      padding:8px; margin-top:6px; border-radius:6px; }
+    .calc-section { font-weight:700; font-size:13px; margin:12px 0 4px 0;
+      padding-bottom:3px; border-bottom:2px solid #eee; color:#2c3e50; }
     #lang-container {
       position: absolute; top: 15px; right: 30px; z-index: 1000;
       display: flex; gap: 10px;
@@ -291,21 +308,144 @@ server <- function(input, output, session) {
   # ============================================================================
   output$ui_metrics <- renderUI({
     t <- tr()
+    help <- function(id) actionButton(id, "?", class = "help-btn")
     fluidRow(
       column(3, div(class = "metric-card", style = "background:#d4edda;",
-        h5(t$irr_title), h3(textOutput("v_irr")))),
+        help("help_irr"), h5(t$irr_title), h3(textOutput("v_irr")))),
       column(3, div(class = "metric-card", style = "background:#d1ecf1;",
-        h5(t$irr_aftertax_title), h3(textOutput("v_irr_at")))),
+        help("help_irr_at"), h5(t$irr_aftertax_title), h3(textOutput("v_irr_at")))),
       column(3, div(class = "metric-card", style = "background:#fff3cd;",
-        h5(t$total_profit_title), h3(textOutput("v_profit")))),
+        help("help_profit"), h5(t$total_profit_title), h3(textOutput("v_profit")))),
       column(3, div(class = "metric-card", style = "background:#f8d7da;",
-        h5(t$monthly_payment_title), h3(textOutput("v_mp"))))
+        help("help_mp"), h5(t$monthly_payment_title), h3(textOutput("v_mp"))))
     )
   })
   output$v_irr    <- renderText(paste0(roi()$irr, "%"))
   output$v_irr_at <- renderText(paste0(tax()$irr_after_tax, "%"))
   output$v_profit <- renderText(fmt_eur(tax()$after_tax_profit))
   output$v_mp     <- renderText(fmt_eur(roi()$monthly_payment))
+
+  # ---- Helper: build step row ----
+  stp <- function(lbl, val) tags$div(class = "calc-step",
+    tags$span(class = "lbl", lbl), tags$span(class = "val", val))
+
+  # ---- Modal 1: Pre-tax IRR ----
+  observeEvent(input$help_irr, {
+    t <- tr(); r <- roi(); p <- params()
+    cfs <- r$cashflows; n <- length(cfs) - 1
+    cf_items <- lapply(seq_along(cfs), function(i) {
+      yr <- i - 1
+      lbl <- if (yr == 0) t$mdl_year0 else {
+        ystr <- gsub("\\{n\\}", yr, t$mdl_year_n)
+        if (yr == n) paste0(ystr, "  ", t$mdl_final_year_add) else ystr
+      }
+      stp(lbl, fmt_eur(cfs[i]))
+    })
+    showModal(modalDialog(title = t$modal_irr_title, size = "l", easyClose = TRUE,
+      footer = modalButton(t$mdl_close),
+      tags$div(class = "calc-section", t$mdl_formula),
+      div(class = "calc-formula", t$mdl_irr_npv, br(), t$mdl_irr_def),
+      tags$div(class = "calc-section", t$mdl_inputs),
+      stp(t$mdl_initial_invest, fmt_eur(p$total_investment)),
+      stp(t$mdl_sale_price, fmt_eur(p$sale_price)),
+      stp(t$hold_years, paste0(p$hold_years, " yr")),
+      tags$div(class = "calc-section", t$mdl_cashflows),
+      tagList(cf_items),
+      tags$div(class = "calc-section", t$mdl_result),
+      div(class = "calc-result", style = "background:#d4edda; color:#155724;",
+          paste0(t$irr_title, " = ", r$irr, "%"))
+    ))
+  })
+
+  # ---- Modal 2: After-tax IRR ----
+  observeEvent(input$help_irr_at, {
+    t <- tr(); tx <- tax(); p <- params()
+    cfs <- tx$cashflows; n <- length(cfs) - 1
+    cf_items <- lapply(seq_along(cfs), function(i) {
+      yr <- i - 1
+      lbl <- if (yr == 0) t$mdl_year0 else {
+        ystr <- gsub("\\{n\\}", yr, t$mdl_year_n)
+        if (yr == n) paste0(ystr, "  ", t$mdl_final_year_add) else ystr
+      }
+      stp(lbl, fmt_eur(cfs[i]))
+    })
+    showModal(modalDialog(title = t$modal_irr_at_title, size = "l", easyClose = TRUE,
+      footer = modalButton(t$mdl_close),
+      tags$div(class = "calc-section", t$mdl_formula),
+      div(class = "calc-formula", t$mdl_irr_npv, br(), t$mdl_irr_def),
+      div(style = "font-size:12px; color:#777; margin:4px 0 8px 0;", t$mdl_irr_at_note),
+      tags$div(class = "calc-section", t$mdl_inputs),
+      stp(t$mdl_initial_invest, fmt_eur(p$total_investment)),
+      stp(t$mdl_sale_price, fmt_eur(p$sale_price)),
+      stp(t$hold_years, paste0(p$hold_years, " yr")),
+      stp(paste0(t$lbl_marginal, " (", t$lbl_soli, ")"), paste0(p$combined_tax_rate * 100, "%")),
+      stp(t$mdl_cg_tax, fmt_eur(tx$capital_gains_tax)),
+      tags$div(class = "calc-section", t$mdl_cashflows),
+      tagList(cf_items),
+      tags$div(class = "calc-section", t$mdl_result),
+      div(class = "calc-result", style = "background:#d1ecf1; color:#0c5460;",
+          paste0(t$irr_aftertax_title, " = ", tx$irr_after_tax, "%"))
+    ))
+  })
+
+  # ---- Modal 3: After-tax Profit ----
+  observeEvent(input$help_profit, {
+    t <- tr(); tx <- tax(); p <- params()
+    ns <- tx$net_sale; tatcf <- tx$total_after_tax_cf
+    rem <- tx$remaining_loan; cgt <- tx$capital_gains_tax
+    showModal(modalDialog(title = t$modal_profit_title, size = "l", easyClose = TRUE,
+      footer = modalButton(t$mdl_close),
+      tags$div(class = "calc-section", t$mdl_formula),
+      div(class = "calc-formula", t$mdl_profit_formula),
+      tags$div(class = "calc-section", paste0(t$mdl_steps, " \u2460 ", t$mdl_initial_invest)),
+      stp(t$mdl_down_payment, fmt_eur(p$down_payment)),
+      stp(t$mdl_extra_costs, fmt_eur(p$extra_costs)),
+      stp(paste0(t$mdl_initial_invest, " = ", t$mdl_down_payment, " + ", t$mdl_extra_costs),
+          fmt_eur(p$total_investment)),
+      tags$div(class = "calc-section", paste0(t$mdl_steps, " \u2461 ", t$mdl_total_atcf)),
+      stp(t$mdl_total_atcf, fmt_eur(tatcf)),
+      tags$div(class = "calc-section", paste0(t$mdl_steps, " \u2462 ", t$mdl_net_sale)),
+      stp(t$mdl_sale_price, fmt_eur(p$sale_price)),
+      stp(paste0("\u2212 ", t$mdl_remaining_loan), fmt_eur(rem)),
+      stp(paste0("\u2212 ", t$mdl_cg_tax), fmt_eur(cgt)),
+      stp(t$mdl_net_sale,
+          paste0(fmt_eur(p$sale_price), " \u2212 ", fmt_eur(rem), " \u2212 ", fmt_eur(cgt), " = ", fmt_eur(ns))),
+      tags$div(class = "calc-section", paste0(t$mdl_steps, " \u2463 ", t$mdl_result)),
+      div(class = "calc-formula",
+        paste0(fmt_eur(tatcf), " + ", fmt_eur(ns), " \u2212 ", fmt_eur(p$total_investment),
+               " = ", fmt_eur(tx$after_tax_profit))),
+      div(class = "calc-result", style = "background:#fff3cd; color:#856404;",
+          paste0(t$total_profit_title, " = ", fmt_eur(tx$after_tax_profit)))
+    ))
+  })
+
+  # ---- Modal 4: Monthly Payment ----
+  observeEvent(input$help_mp, {
+    t <- tr(); p <- params(); r <- roi()
+    mr <- p$annual_rate / 12
+    n_months <- p$loan_term_years * 12
+    factor <- (1 + mr)^n_months
+    numer <- p$loan_amount * mr * factor
+    denom <- factor - 1
+    showModal(modalDialog(title = t$modal_mp_title, size = "l", easyClose = TRUE,
+      footer = modalButton(t$mdl_close),
+      tags$div(class = "calc-section", t$mdl_formula),
+      div(class = "calc-formula", t$mdl_mp_formula),
+      tags$div(class = "calc-section", t$mdl_inputs),
+      stp(t$mdl_loan_amount, fmt_eur(p$loan_amount)),
+      stp(t$mdl_annual_rate, paste0(p$annual_rate * 100, "%")),
+      stp(t$mdl_monthly_rate, paste0(round(mr * 100, 4), "%  (", p$annual_rate * 100, "% \u00F7 12)")),
+      stp(t$mdl_total_months, paste0(n_months, "  (", p$loan_term_years, " \u00D7 12)")),
+      tags$div(class = "calc-section", t$mdl_steps),
+      stp(paste0("(1+r)\u207F"), round(factor, 4)),
+      stp(t$mdl_numerator, fmt_eur(numer, 2)),
+      stp(t$mdl_denominator, round(denom, 4)),
+      stp("M = num / denom", paste0(fmt_eur(numer, 2), " \u00F7 ", round(denom, 4))),
+      tags$div(class = "calc-section", t$mdl_result),
+      div(class = "calc-result", style = "background:#f8d7da; color:#721c24;",
+          paste0(t$monthly_payment_title, " = ", fmt_eur(r$monthly_payment, 2)))
+    ))
+  })
 
   # ============================================================================
   # DOWNLOAD REPORT
@@ -495,12 +635,22 @@ server <- function(input, output, session) {
   # ============================================================================
   output$pl_cashflow <- renderPlotly({
     df <- roi()$yearly_details; t <- tr()
+    # Merge tax effect from tax analysis
+    tx_df <- tax()$tax_details
+    df$Tax_Effect <- tx_df$Tax_Effect[seq_len(nrow(df))]
     plot_ly(df, x = ~Year) %>%
       add_bars(y = ~Excess_Cash,   name = t$plot_cf_excess, marker = list(color = "#27ae60")) %>%
       add_bars(y = ~Out_of_Pocket, name = t$plot_cf_oop,    marker = list(color = "#e74c3c")) %>%
+      add_trace(y = ~Tax_Effect, name = t$plot_cf_tax,
+                type = "scatter", mode = "lines+markers",
+                line = list(color = "#8e44ad", width = 2.5),
+                marker = list(color = ~ifelse(Tax_Effect >= 0, "#27ae60", "#e74c3c"),
+                              size = 7, line = list(color = "#8e44ad", width = 1.5)),
+                hovertemplate = paste0("%{y:,.0f} €<extra>", t$plot_cf_tax, "</extra>")) %>%
       layout(title = list(text = t$plot_cf_title, y = .95), barmode = "group",
              margin = list(t = 50), yaxis = list(title = t$axis_amount),
-             xaxis = list(title = t$axis_year, tickformat = "d"))
+             xaxis = list(title = t$axis_year, tickformat = "d"),
+             legend = list(orientation = "h", y = -0.18))
   })
 
   output$pl_equity <- renderPlotly({
