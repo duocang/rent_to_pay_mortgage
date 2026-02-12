@@ -105,6 +105,9 @@ compute_basic_roi <- function(purchase_price, down_payment, extra_costs,
 }
 
 # ---- German Tax Analysis (§21 EStG) -----------------------------------------
+# When prepay_with_excess = TRUE the monthly surplus (rent − mortgage) is used
+# to reduce the loan principal.  This lowers interest in later years and means
+# the actual cash-in-hand is ~0 (only the tax refund/payment remains).
 compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
                                  loan_term_years, hold_years, initial_rent,
                                  annual_rent_increase, sale_price,
@@ -112,11 +115,12 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
                                  building_ratio  = 0.70,
                                  afa_rate        = 0.02,
                                  operating_costs = 5000,
-                                 combined_tax_rate = 0.475) {
+                                 combined_tax_rate = 0.475,
+                                 prepay_with_excess = FALSE,
+                                 monthly_utilities  = 0) {
 
   mr  <- annual_rate / 12
   mp  <- annuity_payment(loan_amount, annual_rate, loan_term_years)
-  am  <- mp * 12
   bv  <- purchase_price * building_ratio
   afa <- bv * afa_rate
 
@@ -129,21 +133,44 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
   for (yr in seq_len(hold_years)) {
     if (yr > 1) rent <- rent + annual_rent_increase
 
-    y_int <- 0
+    y_int <- 0; y_exc <- 0; y_oop <- 0; y_paid <- 0
+
     for (mo in 1:12) {
-      if (bal <= 0) break
+      if (bal <= 0) {
+        # Loan already cleared – all net rent is surplus
+        y_exc <- y_exc + (rent - monthly_utilities)
+        next
+      }
       int  <- bal * mr
       prin <- min(mp - int, bal)
-      y_int <- y_int + int
-      bal   <- bal - prin
+      pay  <- int + prin
+      y_int  <- y_int + int
+      y_paid <- y_paid + pay
+      bal    <- bal - prin
+
+      net <- rent - monthly_utilities
+      d   <- net - pay
+      if (d < 0) {
+        y_oop <- y_oop + abs(d)
+      } else if (prepay_with_excess && bal > 0) {
+        pp   <- min(d, bal); bal <- bal - pp
+        left <- d - pp
+        if (left > 0) y_exc <- y_exc + left
+      } else {
+        y_exc <- y_exc + d
+      }
     }
 
+    # --- Tax calculation (unchanged logic: income vs deductions) ---
     ar   <- rent * 12
     ded  <- y_int + afa + operating_costs
     ti   <- ar - ded
     te   <- if (ti < 0) abs(ti) * combined_tax_rate else -ti * combined_tax_rate
-    atcf <- ar - am + te
-    cum  <- cum + atcf
+
+    # After-tax CF = actual cash surplus (after prepayment) + tax effect
+    surplus <- y_exc - y_oop
+    atcf    <- surplus + te
+    cum     <- cum + atcf
 
     ycf <- atcf
     if (yr == hold_years) {
@@ -172,7 +199,7 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
 
   list(tax_details = df, cashflows = cfs,
        irr_after_tax = round(irr * 100, 2),
-       monthly_payment = round(mp, 2), annual_mortgage = round(am, 2),
+       monthly_payment = round(mp, 2), annual_mortgage = round(mp * 12, 2),
        annual_afa = round(afa), building_value = round(bv),
        total_refunds = round(tref), total_payments = round(tpay),
        net_tax_benefit = round(tref - tpay),
@@ -187,11 +214,14 @@ compute_sens_opcost <- function(purchase_price, loan_amount, annual_rate,
                                 loan_term_years, hold_years, initial_rent,
                                 annual_rent_increase, sale_price, total_investment,
                                 building_ratio, afa_rate, combined_tax_rate,
+                                prepay_with_excess = FALSE,
+                                monthly_utilities = 0,
                                 oc_range = seq(2000, 10000, 500)) {
   do.call(rbind, lapply(oc_range, function(oc) {
     r <- compute_tax_analysis(purchase_price, loan_amount, annual_rate,
            loan_term_years, hold_years, initial_rent, annual_rent_increase,
-           sale_price, total_investment, building_ratio, afa_rate, oc, combined_tax_rate)
+           sale_price, total_investment, building_ratio, afa_rate, oc,
+           combined_tax_rate, prepay_with_excess, monthly_utilities)
     data.frame(Operating_Costs = oc, IRR = r$irr_after_tax)
   }))
 }
@@ -202,12 +232,14 @@ compute_sens_rate <- function(purchase_price, loan_amount, annual_rate,
                               annual_rent_increase, sale_price, total_investment,
                               building_ratio, afa_rate, operating_costs,
                               combined_tax_rate,
+                              prepay_with_excess = FALSE,
+                              monthly_utilities = 0,
                               rate_range = seq(0.02, 0.06, 0.005)) {
   do.call(rbind, lapply(rate_range, function(rt) {
     r <- compute_tax_analysis(purchase_price, loan_amount, rt,
            loan_term_years, hold_years, initial_rent, annual_rent_increase,
            sale_price, total_investment, building_ratio, afa_rate, operating_costs,
-           combined_tax_rate)
+           combined_tax_rate, prepay_with_excess, monthly_utilities)
     data.frame(Rate = rt * 100, IRR = r$irr_after_tax)
   }))
 }
@@ -218,8 +250,9 @@ compute_hold_analysis <- function(purchase_price, loan_amount, annual_rate,
                                   annual_rent_increase, sale_price,
                                   total_investment, building_ratio, afa_rate,
                                   operating_costs, combined_tax_rate,
+                                  prepay_with_excess = FALSE,
+                                  monthly_utilities = 0,
                                   base_hold = 10, hold_range = 5:15) {
-  # annual appreciation from base scenario
   apr <- (sale_price / purchase_price)^(1 / base_hold) - 1
 
   do.call(rbind, lapply(hold_range, function(hy) {
@@ -227,7 +260,7 @@ compute_hold_analysis <- function(purchase_price, loan_amount, annual_rate,
     r  <- compute_tax_analysis(purchase_price, loan_amount, annual_rate,
             loan_term_years, hy, initial_rent, annual_rent_increase, sp,
             total_investment, building_ratio, afa_rate, operating_costs,
-            combined_tax_rate)
+            combined_tax_rate, prepay_with_excess, monthly_utilities)
     data.frame(Hold_Years = hy, IRR = r$irr_after_tax,
                CG_Tax = r$capital_gains_tax, Net_Sale = r$net_sale)
   }))

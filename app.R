@@ -282,7 +282,9 @@ server <- function(input, output, session) {
       annual_rent_increase = p$annual_rent_increase, sale_price = p$sale_price,
       total_investment = p$total_investment, building_ratio = p$building_ratio,
       afa_rate = p$afa_rate, operating_costs = p$operating_costs,
-      combined_tax_rate = p$combined_tax_rate)
+      combined_tax_rate = p$combined_tax_rate,
+      prepay_with_excess = p$prepay_with_excess,
+      monthly_utilities = p$monthly_utilities)
     res$tax_details$Year <- res$tax_details$Year + p$start_year - 1
     res
   }, ignoreNULL = FALSE)
@@ -293,7 +295,7 @@ server <- function(input, output, session) {
     compute_sens_opcost(p$purchase_price, p$loan_amount, p$annual_rate,
       p$loan_term_years, p$hold_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
-      p$combined_tax_rate)
+      p$combined_tax_rate, p$prepay_with_excess, p$monthly_utilities)
   }, ignoreNULL = FALSE)
 
   sens_rt <- eventReactive(input$calc_btn, {
@@ -301,7 +303,8 @@ server <- function(input, output, session) {
     compute_sens_rate(p$purchase_price, p$loan_amount, p$annual_rate,
       p$loan_term_years, p$hold_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
-      p$operating_costs, p$combined_tax_rate)
+      p$operating_costs, p$combined_tax_rate,
+      p$prepay_with_excess, p$monthly_utilities)
   }, ignoreNULL = FALSE)
 
   hold_an <- eventReactive(input$calc_btn, {
@@ -309,7 +312,8 @@ server <- function(input, output, session) {
     compute_hold_analysis(p$purchase_price, p$loan_amount, p$annual_rate,
       p$loan_term_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
-      p$operating_costs, p$combined_tax_rate, base_hold = p$hold_years)
+      p$operating_costs, p$combined_tax_rate,
+      p$prepay_with_excess, p$monthly_utilities, base_hold = p$hold_years)
   }, ignoreNULL = FALSE)
 
   # ============================================================================
@@ -620,7 +624,8 @@ server <- function(input, output, session) {
       layout(title = list(text = t$chart_income_cost, y = .95), barmode = "stack",
              margin = list(t = 50), xaxis = list(title = t$axis_year, tickformat = "d"),
              yaxis = list(title = t$axis_amount),
-             legend = list(orientation = "h", y = -0.18))
+             legend = list(orientation = "h", y = -0.18)) %>%
+      config(displayModeBar = FALSE)
   })
 
   output$pl_tax_effect <- renderPlotly({
@@ -632,7 +637,8 @@ server <- function(input, output, session) {
             textposition = "outside", hoverinfo = "text") %>%
       layout(title = list(text = t$chart_tax_effect, y = .95),
              margin = list(t = 50), xaxis = list(title = t$axis_year, tickformat = "d"),
-             yaxis = list(title = t$axis_amount), showlegend = FALSE)
+             yaxis = list(title = t$axis_amount), showlegend = FALSE) %>%
+      config(displayModeBar = FALSE)
   })
 
   output$pl_atcf <- renderPlotly({
@@ -646,7 +652,8 @@ server <- function(input, output, session) {
       layout(title = list(text = t$chart_aftertax_cf, y = .95),
              margin = list(t = 50), xaxis = list(title = t$axis_year, tickformat = "d"),
              yaxis = list(title = t$axis_amount),
-             legend = list(orientation = "h", y = -0.18))
+             legend = list(orientation = "h", y = -0.18)) %>%
+      config(displayModeBar = FALSE)
   })
 
   # ============================================================================
@@ -669,7 +676,8 @@ server <- function(input, output, session) {
       layout(title = list(text = t$plot_cf_title, y = .95), barmode = "group",
              margin = list(t = 50), yaxis = list(title = t$axis_amount),
              xaxis = list(title = t$axis_year, tickformat = "d"),
-             legend = list(orientation = "h", y = -0.18))
+             legend = list(orientation = "h", y = -0.18)) %>%
+      config(displayModeBar = FALSE)
   })
 
   output$pl_equity <- renderPlotly({
@@ -685,7 +693,8 @@ server <- function(input, output, session) {
                 fillcolor = "rgba(39,174,96,0.15)", line = list(color = "#27ae60")) %>%
       layout(title = list(text = t$plot_equity_title, y = .95),
              margin = list(t = 50), yaxis = list(title = t$axis_amount),
-             xaxis = list(title = t$axis_year, tickformat = "d"))
+             xaxis = list(title = t$axis_year, tickformat = "d")) %>%
+      config(displayModeBar = FALSE)
   })
 
   output$pl_rent <- renderPlotly({
@@ -697,7 +706,8 @@ server <- function(input, output, session) {
                 fill = "tozeroy", fillcolor = "rgba(23,162,184,0.1)") %>%
       layout(title = list(text = t$plot_rent_title, y = .95),
              margin = list(t = 50), yaxis = list(title = paste(t$plot_rent_monthly, "(€)")),
-             xaxis = list(title = t$axis_year, tickformat = "d"))
+             xaxis = list(title = t$axis_year, tickformat = "d")) %>%
+      config(displayModeBar = FALSE)
   })
 
   # ============================================================================
@@ -786,7 +796,8 @@ server <- function(input, output, session) {
                 name = t$lbl_current, showlegend = TRUE) %>%
       layout(title = list(text = t$overview_sens_oc, y = .95),
              margin = list(t = 50), xaxis = list(title = t$annual_opcost),
-             yaxis = list(title = "IRR (%)"))
+             yaxis = list(title = "IRR (%)")) %>%
+      config(displayModeBar = FALSE)
   })
 
   output$pl_sens_rate <- renderPlotly({
@@ -799,7 +810,8 @@ server <- function(input, output, session) {
                 name = t$lbl_current, showlegend = TRUE) %>%
       layout(title = list(text = t$overview_sens_rate, y = .95),
              margin = list(t = 50), xaxis = list(title = t$annual_rate),
-             yaxis = list(title = "IRR (%)"))
+             yaxis = list(title = "IRR (%)")) %>%
+      config(displayModeBar = FALSE)
   })
 
   output$pl_hold <- renderPlotly({
@@ -824,7 +836,8 @@ server <- function(input, output, session) {
              annotations = list(
                list(x = 10, y = 1.05, yref = "paper", text = t$lbl_year10_line,
                     showarrow = FALSE, font = list(color = "#e74c3c", size = 11))),
-             legend = list(orientation = "h", y = -0.18))
+             legend = list(orientation = "h", y = -0.18)) %>%
+      config(displayModeBar = FALSE)
   })
 
   output$ui_insights <- renderUI({
