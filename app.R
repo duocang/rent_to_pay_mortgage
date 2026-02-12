@@ -275,9 +275,81 @@ server <- function(input, output, session) {
     )
   })
 
+  # ============================================================================
+  # INPUT VALIDATION
+  # ============================================================================
+  validate_inputs <- function(inp, t) {
+    errs <- character(0)
+    # Helper: validate one numeric input
+    chk <- function(id, label, min_val = NULL, max_val = NULL, gt0 = FALSE) {
+      v <- inp[[id]]
+      if (is.null(v) || length(v) == 0 || is.na(v)) {
+        errs <<- c(errs, paste0(label, " \u2014 ", t$val_required)); return()
+      }
+      if (gt0 && v <= 0) { errs <<- c(errs, paste0(label, " \u2014 ", t$val_positive)); return() }
+      if (!is.null(min_val) && v < min_val)
+        errs <<- c(errs, paste0(label, " \u2014 ", gsub("{min}", min_val, t$val_min, fixed = TRUE)))
+      if (!is.null(max_val) && v > max_val)
+        errs <<- c(errs, paste0(label, " \u2014 ", gsub("{max}", max_val, t$val_max, fixed = TRUE)))
+    }
+    # Property
+    chk("purchase_price",    t$purchase_price,    gt0 = TRUE)
+    chk("extra_costs",       t$extra_costs,       min_val = 0)
+    chk("loan_amount",       t$loan_amount,       min_val = 0)
+    chk("annual_rate",       t$annual_rate,       min_val = 0.01, max_val = 99)
+    chk("loan_term_years",   t$loan_term_years,   min_val = 1,    max_val = 50)
+    chk("zinsbindung_years", t$zinsbindung_years, min_val = 1,    max_val = 50)
+    chk("refi_rate",         t$refi_rate,         min_val = 0.01, max_val = 99)
+    # Rental
+    chk("start_year",           t$start_year,           min_val = 1900)
+    chk("initial_rent",         t$initial_rent,         min_val = 0)
+    chk("monthly_utilities",    t$monthly_utilities,    min_val = 0)
+    chk("annual_rent_increase", t$annual_rent_increase, min_val = 0)
+    chk("hold_years",           t$hold_years,           min_val = 1, max_val = 50)
+    chk("sale_price",           t$sale_price,           gt0 = TRUE)
+    # Tax
+    chk("monthly_salary",      t$monthly_salary,      min_val = 0)
+    chk("combined_tax_rate",   t$combined_tax_rate,   min_val = 0.1, max_val = 99)
+    chk("building_ratio",      t$building_ratio,      min_val = 1,   max_val = 100)
+    chk("annual_opcost",       t$annual_opcost,       min_val = 0)
+    chk("afa_rate",            t$afa_rate,            min_val = 0,   max_val = 99)
+    chk("selling_cost_rate",   t$selling_cost_rate,   min_val = 0,   max_val = 99)
+    chk("vacancy_rate",        t$vacancy_rate,        min_val = 0,   max_val = 99)
+    chk("sondertilgung_rate",  t$sondertilgung_rate,  min_val = 0,   max_val = 100)
+    chk("opcost_inflation",    t$opcost_inflation,    min_val = 0,   max_val = 99)
+    # Cross-field business-logic checks
+    if (length(errs) == 0) {
+      pp <- inp$purchase_price; la <- inp$loan_amount
+      zb <- inp$zinsbindung_years; lt <- inp$loan_term_years
+      if (!is.null(la) && !is.null(pp) && la > pp)
+        errs <- c(errs, t$val_loan_exceeds)
+      if (!is.null(zb) && !is.null(lt) && zb > lt)
+        errs <- c(errs, t$val_zins_exceeds)
+    }
+    errs
+  }
+
+  # ---- Validated params (fires on calc_btn, shows modal on error) ----
+  vp <- eventReactive(input$calc_btn, {
+    t <- tr()
+    errs <- validate_inputs(input, t)
+    if (length(errs) > 0) {
+      showModal(modalDialog(
+        title = t$val_title, size = "m", easyClose = TRUE,
+        footer = modalButton(t$mdl_close),
+        tags$div(style = "max-height:400px; overflow-y:auto;",
+          tagList(lapply(errs, function(e)
+            div(style = "padding:5px 0; font-size:13px; border-bottom:1px solid #f0f0f0;",
+              icon("exclamation-circle", style = "color:#e74c3c; margin-right:6px;"), e))))
+      ))
+      return(NULL)
+    }
+    params()
+  }, ignoreNULL = FALSE)
+
   # ---- Basic ROI ----
-  roi <- eventReactive(input$calc_btn, {
-    p <- params()
+  roi <- reactive({
+    p <- vp(); req(p)
     res <- compute_basic_roi(
       purchase_price = p$purchase_price, down_payment = p$down_payment,
       extra_costs = p$extra_costs, loan_amount = p$loan_amount,
@@ -286,14 +358,15 @@ server <- function(input, output, session) {
       monthly_utilities = p$monthly_utilities, annual_rent_increase = p$annual_rent_increase,
       sale_price = p$sale_price, prepay_with_excess = p$prepay_with_excess,
       selling_cost_rate = p$selling_cost_rate, vacancy_rate = p$vacancy_rate,
-      sondertilgung_rate = p$sondertilgung_rate, opcost_inflation = p$opcost_inflation)
+      sondertilgung_rate = p$sondertilgung_rate, opcost_inflation = p$opcost_inflation,
+      zinsbindung_years = p$zinsbindung_years, refi_rate = p$refi_rate)
     res$yearly_details$Year <- res$yearly_details$Year + p$start_year - 1
     res
-  }, ignoreNULL = FALSE)
+  })
 
   # ---- Tax Analysis ----
-  tax <- eventReactive(input$calc_btn, {
-    p <- params()
+  tax <- reactive({
+    p <- vp(); req(p)
     res <- compute_tax_analysis(
       purchase_price = p$purchase_price, loan_amount = p$loan_amount,
       annual_rate = p$annual_rate, loan_term_years = p$loan_term_years,
@@ -305,24 +378,25 @@ server <- function(input, output, session) {
       prepay_with_excess = p$prepay_with_excess,
       monthly_utilities = p$monthly_utilities,
       selling_cost_rate = p$selling_cost_rate, vacancy_rate = p$vacancy_rate,
-      sondertilgung_rate = p$sondertilgung_rate, opcost_inflation = p$opcost_inflation)
+      sondertilgung_rate = p$sondertilgung_rate, opcost_inflation = p$opcost_inflation,
+      zinsbindung_years = p$zinsbindung_years, refi_rate = p$refi_rate)
     res$tax_details$Year <- res$tax_details$Year + p$start_year - 1
     res
-  }, ignoreNULL = FALSE)
+  })
 
   # ---- Sensitivity ----
-  sens_oc <- eventReactive(input$calc_btn, {
-    p <- params()
+  sens_oc <- reactive({
+    p <- vp(); req(p)
     compute_sens_opcost(p$purchase_price, p$loan_amount, p$annual_rate,
       p$loan_term_years, p$hold_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
       p$combined_tax_rate, p$prepay_with_excess, p$monthly_utilities,
       p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,
       p$zinsbindung_years, p$refi_rate)
-  }, ignoreNULL = FALSE)
+  })
 
-  sens_rt <- eventReactive(input$calc_btn, {
-    p <- params()
+  sens_rt <- reactive({
+    p <- vp(); req(p)
     compute_sens_rate(p$purchase_price, p$loan_amount, p$annual_rate,
       p$loan_term_years, p$hold_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
@@ -330,10 +404,10 @@ server <- function(input, output, session) {
       p$prepay_with_excess, p$monthly_utilities,
       p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,
       p$zinsbindung_years, p$refi_rate)
-  }, ignoreNULL = FALSE)
+  })
 
-  hold_an <- eventReactive(input$calc_btn, {
-    p <- params()
+  hold_an <- reactive({
+    p <- vp(); req(p)
     compute_hold_analysis(p$purchase_price, p$loan_amount, p$annual_rate,
       p$loan_term_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
@@ -342,7 +416,7 @@ server <- function(input, output, session) {
       p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,
       p$zinsbindung_years, p$refi_rate,
       base_hold = p$hold_years)
-  }, ignoreNULL = FALSE)
+  })
 
   # ============================================================================
   # METRIC CARDS
@@ -361,10 +435,10 @@ server <- function(input, output, session) {
         help("help_mp"), h5(t$monthly_payment_title), h3(textOutput("v_mp"))))
     )
   })
-  output$v_irr    <- renderText(paste0(roi()$irr, "%"))
-  output$v_irr_at <- renderText(paste0(tax()$irr_after_tax, "%"))
-  output$v_profit <- renderText(fmt_eur(tax()$after_tax_profit))
-  output$v_mp     <- renderText(fmt_eur(roi()$monthly_payment))
+  output$v_irr    <- renderText({ r <- roi(); req(r); paste0(r$irr, "%") })
+  output$v_irr_at <- renderText({ tx <- tax(); req(tx); paste0(tx$irr_after_tax, "%") })
+  output$v_profit <- renderText({ tx <- tax(); req(tx); fmt_eur(tx$after_tax_profit) })
+  output$v_mp     <- renderText({ r <- roi(); req(r); fmt_eur(r$monthly_payment) })
 
   # ---- Helper: build step row ----
   stp <- function(lbl, val) tags$div(class = "calc-step",

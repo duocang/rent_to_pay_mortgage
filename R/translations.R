@@ -250,7 +250,15 @@ CN = list(
   cg_note_detail   = "\u589E\u503C {gain} \u00D7 {rate}% = {tax}\uFF0C\u5F71\u54CD\u7A0E\u540E IRR\u3001\u51C0\u6536\u76CA",
   cg_note_exempt_title = "\u2705 \u8D44\u672C\u5229\u5F97\u7A0E\u5168\u989D\u514D\u5F81\uFF08\u00A723 EStG\uFF09",
   cg_note_exempt_detail = "\u6301\u6709\u226510\u5E74\uFF0C\u5982\u5356\u51FA\u53EF\u7701\u7EA6 {saved}\uFF01",
-  cg_note_no_gain  = "\u2139\uFE0F \u5F53\u524D\u5356\u51FA\u4EF7\u2264\u4E70\u5165\u4EF7\uFF0C\u65E0\u8D44\u672C\u5229\u5F97\u7A0E"
+  cg_note_no_gain  = "\u2139\uFE0F \u5F53\u524D\u5356\u51FA\u4EF7\u2264\u4E70\u5165\u4EF7\uFF0C\u65E0\u8D44\u672C\u5229\u5F97\u7A0E",
+  # ---- Validation ----
+  val_title        = "\u26A0\uFE0F \u8F93\u5165\u6821\u9A8C\u9519\u8BEF",
+  val_required     = "\u5FC5\u586B\u5B57\u6BB5",
+  val_min          = "\u4E0D\u5F97\u5C0F\u4E8E {min}",
+  val_max          = "\u4E0D\u5F97\u5927\u4E8E {max}",
+  val_positive     = "\u5FC5\u987B\u5927\u4E8E 0",
+  val_loan_exceeds = "\u8D37\u6B3E\u91D1\u989D\u4E0D\u5F97\u8D85\u8FC7\u8D2D\u4E70\u4EF7\u683C\uFF08\u9996\u4ED8 < 0\uFF09",
+  val_zins_exceeds = "\u56FA\u5B9A\u5229\u7387\u671F\u4E0D\u5F97\u8D85\u8FC7\u8D37\u6B3E\u5E74\u9650"
 ),
 
 # ---- English -----------------------------------------------------------------
@@ -406,7 +414,15 @@ EN = list(
   cg_note_detail   = "Gain {gain} \u00D7 {rate}% = {tax}, reflected in after-tax IRR & profit",
   cg_note_exempt_title = "\u2705 Capital gains tax fully exempt (\u00A723 EStG)",
   cg_note_exempt_detail = "Hold \u226510 years \u2014 you save approx. {saved}!",
-  cg_note_no_gain  = "\u2139\uFE0F Sale price \u2264 purchase price, no capital gains tax"
+  cg_note_no_gain  = "\u2139\uFE0F Sale price \u2264 purchase price, no capital gains tax",
+  # ---- Validation ----
+  val_title        = "\u26A0\uFE0F Input Validation Error",
+  val_required     = "Required field",
+  val_min          = "Must be \u2265 {min}",
+  val_max          = "Must be \u2264 {max}",
+  val_positive     = "Must be > 0",
+  val_loan_exceeds = "Loan amount cannot exceed purchase price (down payment < 0)",
+  val_zins_exceeds = "Fixed rate period cannot exceed loan term"
 ),
 
 # ---- Deutsch -----------------------------------------------------------------
@@ -562,6 +578,14 @@ DE = list(
   cg_note_detail   = "Gewinn {gain} \u00D7 {rate}% = {tax}, in IRR & Nettogewinn enthalten",
   cg_note_exempt_title = "\u2705 Spekulationssteuer vollst\u00E4ndig befreit (\u00A723 EStG)",
   cg_note_exempt_detail = "Haltedauer \u226510 Jahre \u2014 Sie sparen ca. {saved}!",
-  cg_note_no_gain  = "\u2139\uFE0F Verkaufspreis \u2264 Kaufpreis, keine Spekulationssteuer"
+  cg_note_no_gain  = "\u2139\uFE0F Verkaufspreis \u2264 Kaufpreis, keine Spekulationssteuer",
+  # ---- Validation ----
+  val_title        = "\u26A0\uFE0F Eingabevalidierungsfehler",
+  val_required     = "Pflichtfeld",
+  val_min          = "Muss \u2265 {min} sein",
+  val_max          = "Muss \u2264 {max} sein",
+  val_positive     = "Muss > 0 sein",
+  val_loan_exceeds = "Darlehensbetrag darf den Kaufpreis nicht \u00FCbersteigen (Eigenkapital < 0)",
+  val_zins_exceeds = "Zinsbindung darf die Darlehenslaufzeit nicht \u00FCbersteigen"
 )
 )
