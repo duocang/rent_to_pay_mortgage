@@ -31,12 +31,17 @@ compute_basic_roi <- function(purchase_price, down_payment, extra_costs,
                               loan_amount, annual_rate, loan_term_years,
                               hold_years, initial_rent, monthly_utilities = 0,
                               annual_rent_increase = 0, sale_price,
-                              prepay_with_excess = FALSE) {
+                              prepay_with_excess = FALSE,
+                              selling_cost_rate  = 0,
+                              vacancy_rate       = 0,
+                              sondertilgung_rate = 0.05,
+                              opcost_inflation   = 0) {
 
   total_inv <- down_payment + extra_costs
   mr        <- annual_rate / 12
   n_total   <- loan_term_years * 12
   mp        <- annuity_payment(loan_amount, annual_rate, loan_term_years)
+  annual_prepay_cap <- loan_amount * sondertilgung_rate  # e.g. 5% of original
 
   bal <- loan_amount
   tot_rent <- 0; tot_mort <- 0; oop <- 0; exc <- 0; tot_pre <- 0
@@ -48,32 +53,41 @@ compute_basic_roi <- function(purchase_price, down_payment, extra_costs,
   for (yr in seq_len(hold_years)) {
     if (yr > 1) rent <- rent + annual_rent_increase
     y_rent <- 0; y_mort <- 0; y_oop <- 0; y_exc <- 0; y_pre <- 0
+    # vacancy: skip some months of rent
+    vacancy_months <- round(12 * vacancy_rate)
 
     for (mo in 1:12) {
-      if (bal <= 0) { y_rent <- y_rent + rent; y_exc <- y_exc + rent; next }
+      is_vacant <- (mo <= vacancy_months)
+      mo_rent   <- if (is_vacant) 0 else rent
+
+      if (bal <= 0) { y_rent <- y_rent + mo_rent; y_exc <- y_exc + mo_rent; next }
       int  <- bal * mr
       prin <- min(mp - int, bal)
       pay  <- int + prin
       bal  <- bal - prin
-      net  <- rent - monthly_utilities
+      net  <- mo_rent - (if (is_vacant) 0 else monthly_utilities)
       d    <- net - pay
       if (d < 0) {
         y_oop <- y_oop + abs(d)
       } else if (prepay_with_excess && bal > 0) {
-        pp <- min(d, bal); bal <- bal - pp
+        cap_left <- max(0, annual_prepay_cap - y_pre)
+        pp <- min(d, bal, cap_left); bal <- bal - pp
         y_pre <- y_pre + pp; y_mort <- y_mort + pp
         left <- d - pp; if (left > 0) y_exc <- y_exc + left
       } else {
         y_exc <- y_exc + d
       }
-      y_rent <- y_rent + rent; y_mort <- y_mort + pay
+      y_rent <- y_rent + mo_rent; y_mort <- y_mort + pay
     }
 
     tot_rent <- tot_rent + y_rent; tot_mort <- tot_mort + y_mort
     oop <- oop + y_oop; exc <- exc + y_exc; tot_pre <- tot_pre + y_pre
 
     ycf <- y_exc - y_oop
-    if (yr == hold_years) ycf <- ycf + (sale_price - max(bal, 0))
+    if (yr == hold_years) {
+      selling_costs <- sale_price * selling_cost_rate
+      ycf <- ycf + (sale_price - selling_costs - max(bal, 0))
+    }
     cfs <- c(cfs, ycf)
 
     rows[[yr]] <- data.frame(
@@ -86,7 +100,8 @@ compute_basic_roi <- function(purchase_price, down_payment, extra_costs,
   df  <- do.call(rbind, rows)
   irr <- compute_irr(cfs)
   rem <- round(max(bal, 0), 2)
-  ns  <- sale_price - rem
+  selling_costs <- sale_price * selling_cost_rate
+  ns  <- sale_price - selling_costs - rem
   ain <- total_inv + oop
   aou <- ns + exc
   sr  <- (aou / ain)^(1 / hold_years) - 1
@@ -99,6 +114,7 @@ compute_basic_roi <- function(purchase_price, down_payment, extra_costs,
        total_rent_collected = round(tot_rent, 2),
        total_mortgage_paid = round(tot_mort, 2),
        excess_cash = round(exc, 2), total_prepaid = round(tot_pre, 2),
+       selling_costs = round(selling_costs, 2),
        net_sale_proceed = round(ns, 2), total_profit = round(aou - ain, 2),
        simple_annualized = round(sr * 100, 2), irr = round(irr * 100, 2),
        cashflows = cfs, yearly_details = df)
@@ -117,12 +133,17 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
                                  operating_costs = 5000,
                                  combined_tax_rate = 0.475,
                                  prepay_with_excess = FALSE,
-                                 monthly_utilities  = 0) {
+                                 monthly_utilities  = 0,
+                                 selling_cost_rate  = 0,
+                                 vacancy_rate       = 0,
+                                 sondertilgung_rate = 0.05,
+                                 opcost_inflation   = 0) {
 
   mr  <- annual_rate / 12
   mp  <- annuity_payment(loan_amount, annual_rate, loan_term_years)
   bv  <- purchase_price * building_ratio
   afa <- bv * afa_rate
+  annual_prepay_cap <- loan_amount * sondertilgung_rate
 
   bal  <- loan_amount
   rent <- initial_rent
@@ -132,13 +153,18 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
 
   for (yr in seq_len(hold_years)) {
     if (yr > 1) rent <- rent + annual_rent_increase
+    # operating costs inflate each year
+    yr_opcost <- operating_costs * (1 + opcost_inflation)^(yr - 1)
 
-    y_int <- 0; y_exc <- 0; y_oop <- 0; y_paid <- 0
+    y_int <- 0; y_exc <- 0; y_oop <- 0; y_paid <- 0; y_pre <- 0
+    vacancy_months <- round(12 * vacancy_rate)
 
     for (mo in 1:12) {
+      is_vacant <- (mo <= vacancy_months)
+      mo_rent   <- if (is_vacant) 0 else rent
+
       if (bal <= 0) {
-        # Loan already cleared – all net rent is surplus
-        y_exc <- y_exc + (rent - monthly_utilities)
+        y_exc <- y_exc + (mo_rent - (if (is_vacant) 0 else monthly_utilities))
         next
       }
       int  <- bal * mr
@@ -148,12 +174,14 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
       y_paid <- y_paid + pay
       bal    <- bal - prin
 
-      net <- rent - monthly_utilities
+      net <- mo_rent - (if (is_vacant) 0 else monthly_utilities)
       d   <- net - pay
       if (d < 0) {
         y_oop <- y_oop + abs(d)
       } else if (prepay_with_excess && bal > 0) {
-        pp   <- min(d, bal); bal <- bal - pp
+        cap_left <- max(0, annual_prepay_cap - y_pre)
+        pp   <- min(d, bal, cap_left); bal <- bal - pp
+        y_pre <- y_pre + pp
         left <- d - pp
         if (left > 0) y_exc <- y_exc + left
       } else {
@@ -161,13 +189,13 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
       }
     }
 
-    # --- Tax calculation (unchanged logic: income vs deductions) ---
-    ar   <- rent * 12
-    ded  <- y_int + afa + operating_costs
+    # --- Tax calculation: income vs deductions ---
+    # Vacancy reduces actual rent but tax still uses actual collected rent
+    ar   <- rent * 12 * (1 - vacancy_rate)
+    ded  <- y_int + afa + yr_opcost
     ti   <- ar - ded
     te   <- if (ti < 0) abs(ti) * combined_tax_rate else -ti * combined_tax_rate
 
-    # After-tax CF = actual cash surplus (after prepayment) + tax effect
     surplus <- y_exc - y_oop
     atcf    <- surplus + te
     cum     <- cum + atcf
@@ -175,14 +203,15 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
     ycf <- atcf
     if (yr == hold_years) {
       rem <- max(bal, 0)
+      selling_costs <- sale_price * selling_cost_rate
       cgt <- if (hold_years >= 10) 0 else max(0, sale_price - purchase_price) * combined_tax_rate
-      ycf <- ycf + sale_price - rem - cgt
+      ycf <- ycf + sale_price - selling_costs - rem - cgt
     }
     cfs <- c(cfs, ycf)
 
     rows[[yr]] <- data.frame(
       Year = yr, Annual_Rent = round(ar), Loan_Interest = round(y_int),
-      Depreciation = round(afa), Operating_Costs = round(operating_costs),
+      Depreciation = round(afa), Operating_Costs = round(yr_opcost),
       Total_Deductible = round(ded), Taxable_Income = round(ti),
       Tax_Effect = round(te), After_Tax_CF = round(atcf),
       Cumulative_CF = round(cum), Remaining_Loan = round(max(bal, 0)))
@@ -191,8 +220,9 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
   df   <- do.call(rbind, rows)
   irr  <- compute_irr(cfs)
   rem  <- max(bal, 0)
+  selling_costs <- sale_price * selling_cost_rate
   cgt  <- if (hold_years >= 10) 0 else max(0, sale_price - purchase_price) * combined_tax_rate
-  ns   <- sale_price - rem - cgt
+  ns   <- sale_price - selling_costs - rem - cgt
   tref <- sum(df$Tax_Effect[df$Tax_Effect > 0])
   tpay <- sum(abs(df$Tax_Effect[df$Tax_Effect < 0]))
   tatcf <- sum(df$After_Tax_CF)
@@ -204,6 +234,7 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
        total_refunds = round(tref), total_payments = round(tpay),
        net_tax_benefit = round(tref - tpay),
        total_after_tax_cf = round(tatcf),
+       selling_costs = round(selling_costs),
        net_sale = round(ns), capital_gains_tax = round(cgt),
        remaining_loan = round(rem),
        after_tax_profit = round(tatcf + ns - total_investment))
@@ -216,12 +247,17 @@ compute_sens_opcost <- function(purchase_price, loan_amount, annual_rate,
                                 building_ratio, afa_rate, combined_tax_rate,
                                 prepay_with_excess = FALSE,
                                 monthly_utilities = 0,
+                                selling_cost_rate  = 0,
+                                vacancy_rate       = 0,
+                                sondertilgung_rate = 0.05,
+                                opcost_inflation   = 0,
                                 oc_range = seq(2000, 10000, 500)) {
   do.call(rbind, lapply(oc_range, function(oc) {
     r <- compute_tax_analysis(purchase_price, loan_amount, annual_rate,
            loan_term_years, hold_years, initial_rent, annual_rent_increase,
            sale_price, total_investment, building_ratio, afa_rate, oc,
-           combined_tax_rate, prepay_with_excess, monthly_utilities)
+           combined_tax_rate, prepay_with_excess, monthly_utilities,
+           selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation)
     data.frame(Operating_Costs = oc, IRR = r$irr_after_tax)
   }))
 }
@@ -234,12 +270,17 @@ compute_sens_rate <- function(purchase_price, loan_amount, annual_rate,
                               combined_tax_rate,
                               prepay_with_excess = FALSE,
                               monthly_utilities = 0,
+                              selling_cost_rate  = 0,
+                              vacancy_rate       = 0,
+                              sondertilgung_rate = 0.05,
+                              opcost_inflation   = 0,
                               rate_range = seq(0.02, 0.06, 0.005)) {
   do.call(rbind, lapply(rate_range, function(rt) {
     r <- compute_tax_analysis(purchase_price, loan_amount, rt,
            loan_term_years, hold_years, initial_rent, annual_rent_increase,
            sale_price, total_investment, building_ratio, afa_rate, operating_costs,
-           combined_tax_rate, prepay_with_excess, monthly_utilities)
+           combined_tax_rate, prepay_with_excess, monthly_utilities,
+           selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation)
     data.frame(Rate = rt * 100, IRR = r$irr_after_tax)
   }))
 }
@@ -252,6 +293,10 @@ compute_hold_analysis <- function(purchase_price, loan_amount, annual_rate,
                                   operating_costs, combined_tax_rate,
                                   prepay_with_excess = FALSE,
                                   monthly_utilities = 0,
+                                  selling_cost_rate  = 0,
+                                  vacancy_rate       = 0,
+                                  sondertilgung_rate = 0.05,
+                                  opcost_inflation   = 0,
                                   base_hold = 10, hold_range = 5:15) {
   apr <- (sale_price / purchase_price)^(1 / base_hold) - 1
 
@@ -260,7 +305,8 @@ compute_hold_analysis <- function(purchase_price, loan_amount, annual_rate,
     r  <- compute_tax_analysis(purchase_price, loan_amount, annual_rate,
             loan_term_years, hy, initial_rent, annual_rent_increase, sp,
             total_investment, building_ratio, afa_rate, operating_costs,
-            combined_tax_rate, prepay_with_excess, monthly_utilities)
+            combined_tax_rate, prepay_with_excess, monthly_utilities,
+            selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation)
     data.frame(Hold_Years = hy, IRR = r$irr_after_tax,
                CG_Tax = r$capital_gains_tax, Net_Sale = r$net_sale)
   }))

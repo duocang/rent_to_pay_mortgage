@@ -136,6 +136,10 @@ ui <- fluidPage(
       numericInput("building_ratio", "建筑物占比 (%)", 70, step = 5),
       numericInput("annual_opcost", "年运营成本 (元)", 5000, step = 500),
       numericInput("afa_rate", "折旧率 AfA (%)", 2, step = 0.5),
+      numericInput("selling_cost_rate", "卖房成本 (%)", 3, step = 0.5),
+      numericInput("vacancy_rate", "空置率 (%)", 0, step = 1),
+      numericInput("sondertilgung_rate", "年提前还贷上限 (%)", 5, step = 1),
+      numericInput("opcost_inflation", "运营成本年通胀 (%)", 2, step = 0.5),
       hr(),
       actionButton("calc_btn", "开始计算", class = "btn-primary")
     ),
@@ -177,6 +181,10 @@ server <- function(input, output, session) {
     updateNumericInput(session, "building_ratio",      label = t$building_ratio)
     updateNumericInput(session, "annual_opcost",       label = t$annual_opcost)
     updateNumericInput(session, "afa_rate",            label = t$afa_rate)
+    updateNumericInput(session, "selling_cost_rate",   label = t$selling_cost_rate)
+    updateNumericInput(session, "vacancy_rate",        label = t$vacancy_rate)
+    updateNumericInput(session, "sondertilgung_rate",  label = t$sondertilgung_rate)
+    updateNumericInput(session, "opcost_inflation",    label = t$opcost_inflation)
     updateCheckboxInput(session, "prepay_with_excess", label = t$prepay_with_excess)
     updateActionButton(session,  "calc_btn",           label = t$calc_btn)
   })
@@ -252,6 +260,10 @@ server <- function(input, output, session) {
       building_ratio = input$building_ratio / 100,
       operating_costs = input$annual_opcost,
       afa_rate = input$afa_rate / 100,
+      selling_cost_rate  = input$selling_cost_rate / 100,
+      vacancy_rate       = input$vacancy_rate / 100,
+      sondertilgung_rate = input$sondertilgung_rate / 100,
+      opcost_inflation   = input$opcost_inflation / 100,
       start_year = input$start_year,
       down_payment = input$purchase_price * m - input$loan_amount * m,
       total_investment = (input$purchase_price * m - input$loan_amount * m) + input$extra_costs * m
@@ -267,7 +279,9 @@ server <- function(input, output, session) {
       annual_rate = p$annual_rate, loan_term_years = p$loan_term_years,
       hold_years = p$hold_years, initial_rent = p$initial_rent,
       monthly_utilities = p$monthly_utilities, annual_rent_increase = p$annual_rent_increase,
-      sale_price = p$sale_price, prepay_with_excess = p$prepay_with_excess)
+      sale_price = p$sale_price, prepay_with_excess = p$prepay_with_excess,
+      selling_cost_rate = p$selling_cost_rate, vacancy_rate = p$vacancy_rate,
+      sondertilgung_rate = p$sondertilgung_rate, opcost_inflation = p$opcost_inflation)
     res$yearly_details$Year <- res$yearly_details$Year + p$start_year - 1
     res
   }, ignoreNULL = FALSE)
@@ -284,7 +298,9 @@ server <- function(input, output, session) {
       afa_rate = p$afa_rate, operating_costs = p$operating_costs,
       combined_tax_rate = p$combined_tax_rate,
       prepay_with_excess = p$prepay_with_excess,
-      monthly_utilities = p$monthly_utilities)
+      monthly_utilities = p$monthly_utilities,
+      selling_cost_rate = p$selling_cost_rate, vacancy_rate = p$vacancy_rate,
+      sondertilgung_rate = p$sondertilgung_rate, opcost_inflation = p$opcost_inflation)
     res$tax_details$Year <- res$tax_details$Year + p$start_year - 1
     res
   }, ignoreNULL = FALSE)
@@ -295,7 +311,8 @@ server <- function(input, output, session) {
     compute_sens_opcost(p$purchase_price, p$loan_amount, p$annual_rate,
       p$loan_term_years, p$hold_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
-      p$combined_tax_rate, p$prepay_with_excess, p$monthly_utilities)
+      p$combined_tax_rate, p$prepay_with_excess, p$monthly_utilities,
+      p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation)
   }, ignoreNULL = FALSE)
 
   sens_rt <- eventReactive(input$calc_btn, {
@@ -304,7 +321,8 @@ server <- function(input, output, session) {
       p$loan_term_years, p$hold_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
       p$operating_costs, p$combined_tax_rate,
-      p$prepay_with_excess, p$monthly_utilities)
+      p$prepay_with_excess, p$monthly_utilities,
+      p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation)
   }, ignoreNULL = FALSE)
 
   hold_an <- eventReactive(input$calc_btn, {
@@ -313,7 +331,9 @@ server <- function(input, output, session) {
       p$loan_term_years, p$initial_rent, p$annual_rent_increase,
       p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
       p$operating_costs, p$combined_tax_rate,
-      p$prepay_with_excess, p$monthly_utilities, base_hold = p$hold_years)
+      p$prepay_with_excess, p$monthly_utilities,
+      p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,
+      base_hold = p$hold_years)
   }, ignoreNULL = FALSE)
 
   # ============================================================================
@@ -909,6 +929,8 @@ server <- function(input, output, session) {
       ln(t$stab_appreciation, paste0(eur(gain), " EUR  (",
          round(gain / p$purchase_price * 100, 1), "%)")),
       ln(t$stab_hold,         paste0(p$hold_years, yr_s)),
+      ln(t$stab_selling_cost,  paste0(p$selling_cost_rate * 100, "%")),
+      ln(t$stab_vacancy,       paste0(p$vacancy_rate * 100, "%")),
       blank,
       paste0("[ ", t$stab_sec_loan, " ]"),
       bar(),
@@ -934,6 +956,7 @@ server <- function(input, output, session) {
       bar(". "),
       ln(t$stab_excess_cash,   paste0(eur(r$excess_cash), " EUR")),
       ln(t$stab_net_sale,      paste0(eur(r$net_sale_proceed), " EUR")),
+      if (p$selling_cost_rate > 0) ln(t$lbl_selling_costs, paste0("-", eur(r$selling_costs), " EUR")) else NULL,
       ln(t$stab_total_cash,    paste0(eur(total_cash), " EUR")),
       bar(". "),
       ln(t$stab_total_profit,  paste0(eur(r$total_profit), " EUR  ***")),
@@ -943,6 +966,8 @@ server <- function(input, output, session) {
       ln(t$stab_building_val,   paste0(eur(tx$building_value), " EUR")),
       ln(t$stab_annual_afa,     paste0(eur(tx$annual_afa), " EUR")),
       ln(t$stab_annual_opcost,  paste0(eur(p$operating_costs), " EUR")),
+      ln(t$stab_opcost_infl,    paste0(p$opcost_inflation * 100, "%")),
+      ln(t$stab_sondertilgung,  paste0(p$sondertilgung_rate * 100, "%")),
       ln(t$stab_marginal_rate,  paste0(p$combined_tax_rate * 100, "%")),
       bar(". "),
       ln(t$stab_total_refund,   paste0("+", eur(tx$total_refunds), " EUR")),
