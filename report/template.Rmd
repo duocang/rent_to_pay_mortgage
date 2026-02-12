@@ -1,0 +1,268 @@
+---
+title: '`r params$t$report_title`'
+subtitle: '`r params$t$report_subtitle`'
+date: "`r format(params$generated_at, '%Y-%m-%d %H:%M')`"
+output: pdf_document
+params:
+  t: NULL
+  p: NULL
+  roi: NULL
+  tax: NULL
+  sens_oc: NULL
+  sens_rt: NULL
+  hold: NULL
+  generated_at: !r Sys.time()
+  app_dir: '.'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE, warning = FALSE, message = FALSE,
+  fig.width = 6.5, fig.height = 3, fig.pos = "H", out.width = "100%"
+)
+library(ggplot2)
+library(knitr)
+
+t   <- params$t
+p   <- params$p
+roi <- params$roi
+tax <- params$tax
+
+# ---- Helpers ----
+fmt  <- function(x, d = 0) formatC(round(x, d), format = "f", digits = d, big.mark = ",")
+feur <- function(x, d = 0) paste0(fmt(x, d), " \u20AC")
+
+# ---- Colors ----
+C <- list(green = "#27ae60", red = "#e74c3c", blue = "#3498db",
+          purple = "#9b59b6", orange = "#e67e22", teal = "#1abc9c",
+          dark = "#2c3e50", cyan = "#17a2b8")
+
+# ---- Chart theme ----
+theme_rpt <- theme_minimal(base_size = 9) +
+  theme(plot.title = element_text(size = 10, face = "bold"),
+        legend.position = "bottom", legend.title = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.margin = margin(5, 10, 5, 10))
+```
+
+# `r t$report_sec_metrics`
+
+```{r metrics}
+kable(data.frame(
+  Metric = c(t$irr_title, t$irr_aftertax_title,
+             t$total_profit_title, t$monthly_payment_title),
+  Value  = c(paste0(roi$irr, "%"), paste0(tax$irr_after_tax, "%"),
+             feur(tax$after_tax_profit), feur(roi$monthly_payment))
+), col.names = c("", ""), align = c("l", "r"), booktabs = TRUE)
+```
+
+# `r t$report_sec_profile`
+
+## `r t$tax_profile_title`
+
+```{r tax_profile}
+kable(data.frame(
+  Item = c(t$monthly_salary, t$lbl_annual_salary, t$lbl_tax_class,
+           t$lbl_marginal, t$lbl_status),
+  Value = c(feur(p$monthly_salary), feur(p$monthly_salary * 12),
+            t$lbl_tax_class_val,
+            paste0(round(p$combined_tax_rate * 100, 1), "% (", t$lbl_soli, ")"),
+            t$lbl_status_val)
+), col.names = c("", ""), align = c("l", "r"), booktabs = TRUE)
+```
+
+## `r t$prop_profile_title`
+
+```{r prop_profile}
+kable(data.frame(
+  Item = c(t$lbl_building_val, t$lbl_annual_afa, t$lbl_annual_opcost,
+           t$lbl_yr1_interest, t$lbl_afa_period),
+  Value = c(paste0(feur(tax$building_value), " (", round(p$building_ratio * 100), "%)"),
+            feur(tax$annual_afa), feur(p$operating_costs),
+            feur(tax$tax_details$Loan_Interest[1]),
+            t$lbl_afa_period_val)
+), col.names = c("", ""), align = c("l", "r"), booktabs = TRUE)
+```
+
+> **`r t$lbl_hold_note`**
+
+\newpage
+
+# `r t$report_sec_investment`
+
+```{r inv_table, results='asis'}
+df_b <- roi$yearly_details
+if (length(t$tbl_basic_cols) == ncol(df_b)) colnames(df_b) <- t$tbl_basic_cols
+cat("\\footnotesize\n")
+print(kable(df_b, booktabs = TRUE, digits = 0,
+            format.args = list(big.mark = ","),
+            caption = t$data_basic_title))
+cat("\\normalsize\n")
+```
+
+```{r inv_cashflow, fig.height=2.8, fig.cap=t$plot_cf_title}
+df <- roi$yearly_details
+df_long <- data.frame(
+  Year = rep(df$Year, 2),
+  Type = factor(rep(c(t$plot_cf_excess, t$plot_cf_oop), each = nrow(df)),
+                levels = c(t$plot_cf_excess, t$plot_cf_oop)),
+  Amount = c(df$Excess_Cash, df$Out_of_Pocket)
+)
+ggplot(df_long, aes(x = factor(Year), y = Amount, fill = Type)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = c(C$green, C$red)) +
+  labs(x = t$axis_year, y = t$axis_amount) +
+  theme_rpt
+```
+
+```{r inv_equity, fig.height=2.8, fig.cap=t$plot_equity_title}
+pv <- seq(roi$purchase_price, roi$sale_price, length.out = roi$hold_years + 1)[-1]
+df$Equity <- pv - df$Remaining_Balance
+df_eq <- data.frame(
+  Year  = rep(df$Year, 2),
+  Type  = factor(rep(c(t$plot_equity_loan, t$plot_equity_net), each = nrow(df)),
+                 levels = c(t$plot_equity_loan, t$plot_equity_net)),
+  Value = c(df$Remaining_Balance, df$Equity)
+)
+ggplot(df_eq, aes(x = Year, y = Value, color = Type, fill = Type)) +
+  geom_area(alpha = 0.12, position = "identity") +
+  geom_line(size = 1) + geom_point(size = 1.5) +
+  scale_color_manual(values = c(C$red, C$green)) +
+  scale_fill_manual(values = c(C$red, C$green)) +
+  scale_x_continuous(breaks = df$Year) +
+  labs(x = t$axis_year, y = t$axis_amount) +
+  theme_rpt
+```
+
+\newpage
+
+# `r t$report_sec_tax`
+
+> `r paste0("**", t$note_refund_title, "**: ", t$note_refund_body)`
+>
+> `r paste0("**", t$note_afa_title, "**: ", t$note_afa_body)`
+
+```{r tax_table, results='asis'}
+df_t <- tax$tax_details
+if (length(t$tbl_tax_cols) == ncol(df_t)) colnames(df_t) <- t$tbl_tax_cols
+cat("\\footnotesize\n")
+print(kable(df_t, booktabs = TRUE, digits = 0,
+            format.args = list(big.mark = ","),
+            caption = t$tax_table_title))
+cat("\\normalsize\n")
+```
+
+```{r tax_income_cost, fig.height=3, fig.cap=t$chart_income_cost}
+td <- tax$tax_details
+td_stack <- data.frame(
+  Year = rep(td$Year, 3),
+  Category = factor(rep(c(t$lbl_interest, t$lbl_depreciation, t$lbl_opcost), each = nrow(td)),
+                    levels = c(t$lbl_interest, t$lbl_depreciation, t$lbl_opcost)),
+  Amount = c(td$Loan_Interest, td$Depreciation, td$Operating_Costs)
+)
+ggplot() +
+  geom_col(data = td_stack, aes(x = factor(Year), y = Amount, fill = Category)) +
+  geom_point(data = td, aes(x = factor(Year), y = Annual_Rent), color = C$green, size = 2) +
+  geom_line(data = td, aes(x = factor(Year), y = Annual_Rent, group = 1),
+            color = C$green, size = 1) +
+  scale_fill_manual(values = c(C$blue, C$purple, C$orange)) +
+  labs(x = t$axis_year, y = t$axis_amount) +
+  theme_rpt +
+  guides(fill = guide_legend(nrow = 1))
+```
+
+```{r tax_effect, fig.height=2.6, fig.cap=t$chart_tax_effect}
+td$fill_col <- ifelse(td$Tax_Effect >= 0, C$green, C$red)
+td$lbl <- paste0(ifelse(td$Tax_Effect >= 0, "+", ""), fmt(td$Tax_Effect))
+td$vj  <- ifelse(td$Tax_Effect >= 0, -0.5, 1.5)
+
+ggplot(td, aes(x = factor(Year), y = Tax_Effect)) +
+  geom_col(fill = td$fill_col, width = 0.7) +
+  geom_text(aes(label = lbl, vjust = vj), size = 2.5) +
+  labs(x = t$axis_year, y = t$axis_amount) +
+  theme_rpt
+```
+
+```{r tax_atcf, fig.height=2.6, fig.cap=t$chart_aftertax_cf}
+ggplot(td, aes(x = Year)) +
+  geom_col(aes(y = After_Tax_CF), fill = C$teal, width = 0.7) +
+  geom_line(aes(y = Cumulative_CF), color = C$dark, linetype = "dashed", size = 0.8) +
+  geom_point(aes(y = Cumulative_CF), color = C$dark, size = 1.5) +
+  scale_x_continuous(breaks = td$Year) +
+  labs(x = t$axis_year, y = t$axis_amount) +
+  theme_rpt
+```
+
+\newpage
+
+# `r t$report_sec_sensitivity`
+
+```{r sens_oc, fig.height=2.6}
+if (!is.null(params$sens_oc)) {
+  df_oc <- params$sens_oc
+  ggplot(df_oc, aes(x = Operating_Costs, y = IRR)) +
+    geom_line(color = C$orange, size = 1) +
+    geom_point(color = C$orange, size = 2) +
+    geom_vline(xintercept = p$operating_costs, linetype = "dashed", color = C$red) +
+    annotate("text", x = p$operating_costs, y = max(df_oc$IRR),
+             label = paste0(t$lbl_current, ": ", feur(p$operating_costs)),
+             hjust = -0.1, size = 2.8, color = C$red) +
+    labs(title = t$overview_sens_oc, x = t$annual_opcost, y = "IRR (%)") +
+    theme_rpt
+}
+```
+
+```{r sens_rate, fig.height=2.6}
+if (!is.null(params$sens_rt)) {
+  df_rt <- params$sens_rt
+  ggplot(df_rt, aes(x = Rate, y = IRR)) +
+    geom_line(color = C$blue, size = 1) +
+    geom_point(color = C$blue, size = 2) +
+    geom_vline(xintercept = p$annual_rate * 100, linetype = "dashed", color = C$red) +
+    annotate("text", x = p$annual_rate * 100, y = max(df_rt$IRR),
+             label = paste0(t$lbl_current, ": ", round(p$annual_rate * 100, 2), "%"),
+             hjust = -0.1, size = 2.8, color = C$red) +
+    labs(title = t$overview_sens_rate, x = t$annual_rate, y = "IRR (%)") +
+    theme_rpt
+}
+```
+
+# `r t$overview_hold`
+
+```{r hold_period, fig.height=3}
+if (!is.null(params$hold)) {
+  df_h <- params$hold
+  ggplot(df_h, aes(x = factor(Hold_Years), y = IRR,
+                   fill = Hold_Years >= 10)) +
+    geom_col(show.legend = FALSE, width = 0.7) +
+    scale_fill_manual(values = c("TRUE" = C$green, "FALSE" = C$red)) +
+    geom_text(aes(label = paste0(IRR, "%")), vjust = -0.5, size = 2.8) +
+    labs(title = t$overview_hold, x = t$hold_years, y = "IRR (%)") +
+    theme_rpt
+}
+```
+
+# `r t$overview_summary`
+
+```{r summary_table}
+total_ret <- tax$total_after_tax_cf + tax$net_sale
+kable(data.frame(
+  Item  = c(t$lbl_initial_invest, t$lbl_total_atcf, t$lbl_net_sale,
+            t$lbl_cg_tax, "", t$lbl_total_return, t$lbl_net_profit),
+  Value = c(feur(-p$total_investment), feur(tax$total_after_tax_cf),
+            feur(tax$net_sale), feur(tax$capital_gains_tax), "----------",
+            feur(total_ret), feur(tax$after_tax_profit))
+), col.names = c("", ""), align = c("l", "r"), booktabs = TRUE)
+```
+
+# `r t$report_sec_insights`
+
+```{r insights, results='asis'}
+for (insight in t$insights) cat(paste0("- ", insight, "\n"))
+```
+
+---
+
+\begin{center}
+\small\textit{`r t$report_disclaimer`}
+\end{center}

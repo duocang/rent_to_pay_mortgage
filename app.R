@@ -6,6 +6,10 @@ library(plotly)
 library(DT)
 library(bslib)
 
+source("R/translations.R")  # 多语言支持
+source("R/compute.R")       # 计算引擎 (IRR, 基础ROI, 德国税务分析, 敏感度分析)
+source("R/report.R")        # PDF 报告生成 (可扩展架构)
+
 # ==============================================================================
 # Helper: format €
 # ==============================================================================
@@ -84,26 +88,27 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(width = 3,
       tags$div(class = "sec-hdr", uiOutput("sec1", inline = TRUE)),
-      numericInput("purchase_price", "购买价格 (万€)", 25, step = 1),
-      numericInput("extra_costs", "额外杂费 (万€)", 3, step = 0.5),
-      numericInput("loan_amount", "贷款金额 (万€)", 20, step = 1),
+      numericInput("purchase_price", "购买价格 (万元)", 25, step = 1),
+      numericInput("extra_costs", "额外杂费 (万元)", 3, step = 0.5),
+      numericInput("loan_amount", "贷款金额 (万元)", 20, step = 1),
       numericInput("annual_rate", "贷款年利率 (%)", 3.84, step = 0.01),
       numericInput("loan_term_years", "贷款年限 (年)", 20, step = 1),
       hr(),
       tags$div(class = "sec-hdr", uiOutput("sec2", inline = TRUE)),
       numericInput("start_year", "起始年份", as.integer(format(Sys.Date(), "%Y")), step = 1),
-      numericInput("initial_rent", "月租金·净 (€)", 1200, step = 50),
-      numericInput("monthly_utilities", "物业水暖网费 (€/月)", 0, step = 50),
-      numericInput("annual_rent_increase", "租金年增幅 (€/月)", 50, step = 10),
+      numericInput("initial_rent", "月租金·净 (元)", 1200, step = 50),
+      numericInput("monthly_utilities", "物业水暖网费 (元/月)", 0, step = 50),
+      numericInput("annual_rent_increase", "租金年增幅 (元/月)", 50, step = 10),
       numericInput("hold_years", "持有年数", 10, step = 1),
-      numericInput("sale_price", "预期卖出价 (万€)", 28, step = 1),
+      uiOutput("hold_years_alert"),
+      numericInput("sale_price", "预期卖出价 (万元)", 28, step = 1),
       checkboxInput("prepay_with_excess", "多余租金自动提前还贷", value = FALSE),
       hr(),
       tags$div(class = "sec-hdr", uiOutput("sec3", inline = TRUE)),
-      numericInput("monthly_salary", "月薪·税前 (€)", 5500, step = 100),
+      numericInput("monthly_salary", "月薪·税前 (元)", 5500, step = 100),
       numericInput("combined_tax_rate", "综合边际税率 (%)", 47.5, step = 0.5),
       numericInput("building_ratio", "建筑物占比 (%)", 70, step = 5),
-      numericInput("annual_opcost", "年运营成本 (€)", 5000, step = 500),
+      numericInput("annual_opcost", "年运营成本 (元)", 5000, step = 500),
       numericInput("afa_rate", "折旧率 AfA (%)", 2, step = 0.5),
       hr(),
       actionButton("calc_btn", "开始计算", class = "btn-primary")
@@ -111,6 +116,7 @@ ui <- fluidPage(
 
     mainPanel(width = 9,
       uiOutput("ui_metrics"),
+      uiOutput("ui_download_btn"),
       uiOutput("ui_tabs")
     )
   )
@@ -154,6 +160,48 @@ server <- function(input, output, session) {
   output$sec2 <- renderUI(tr()$sec_rental)
   output$sec3 <- renderUI(tr()$sec_tax)
   output$ui_title <- renderUI(titlePanel(tr()$title))
+
+  # ---- Hold period alert (§23 EStG) ----
+  output$hold_years_alert <- renderUI({
+    t <- tr(); hy <- input$hold_years
+    if (is.null(hy)) return(NULL)
+    # ≥ 10 years → exempt
+    if (hy >= 10) {
+      return(div(style = "background:#eafaf1; border-left:3px solid #27ae60; padding:5px 8px; margin:-2px 0 4px 0; font-size:11.5px; border-radius:0 4px 4px 0; color:#1e8449;",
+          t$cg_exempt))
+    }
+    # < 10 years → detailed tax warning
+    m <- unit_m()
+    sp <- input$sale_price; pp <- input$purchase_price
+    if (is.null(sp) || is.null(pp)) return(NULL)
+    gain <- (sp - pp) * m
+    if (gain <= 0) {
+      return(div(style = "background:#fdecea; border-left:3px solid #e74c3c; padding:5px 8px; margin:-2px 0 4px 0; font-size:11.5px; border-radius:0 4px 4px 0; color:#c0392b;",
+          t$cg_warn_no_gain))
+    }
+    rate <- input$combined_tax_rate
+    if (is.null(rate)) rate <- 47.5
+    tax_loss <- gain * rate / 100
+    div(style = "background:linear-gradient(135deg,#fdecea,#fef5f3); border-left:3px solid #e74c3c; padding:7px 9px; margin:-2px 0 6px 0; border-radius:0 5px 5px 0; box-shadow:0 1px 3px rgba(0,0,0,0.06);",
+      tags$div(style = "font-weight:700; font-size:11.5px; color:#c0392b; margin-bottom:4px;",
+        t$cg_warn_title,
+        tags$span(style = "font-weight:400; font-size:9.5px; color:#b0b0b0;", " §23 EStG")),
+      tags$div(style = "font-size:10.5px; color:#5a3a3a; line-height:1.6;",
+        tags$div(style = "display:flex; justify-content:space-between; margin-bottom:1px;",
+          tags$span(t$cg_warn_gain),
+          tags$span(style = "font-weight:600;", fmt_eur(gain))),
+        tags$div(style = "font-size:9px; color:#aaa; text-align:right; margin-bottom:2px;",
+          fmt_eur(sp * m), " \u2212 ", fmt_eur(pp * m)),
+        tags$div(style = "display:flex; justify-content:space-between;",
+          tags$span(t$cg_warn_tax_loss,
+            tags$span(style = "color:#aaa;", paste0(" ", rate, "%"))),
+          tags$b(style = "color:#c0392b; font-size:12px;",
+            paste0("\u2248 ", fmt_eur(tax_loss))))
+      ),
+      tags$hr(style = "margin:5px 0 4px 0; border-color:#f5c6cb; opacity:0.5;"),
+      tags$div(style = "font-size:10px; color:#27ae60; font-weight:500;", t$cg_warn_tip)
+    )
+  })
 
   # ---- Unit multiplier ----
   unit_m <- reactive({ lang <- input$lang; if (is.null(lang)) lang <- "CN"; if (lang == "CN") 10000 else 1000 })
@@ -260,6 +308,41 @@ server <- function(input, output, session) {
   output$v_mp     <- renderText(fmt_eur(roi()$monthly_payment))
 
   # ============================================================================
+  # DOWNLOAD REPORT
+  # ============================================================================
+  output$ui_download_btn <- renderUI({
+    div(style = "text-align: right; margin: -6px 0 8px 0;",
+      downloadButton("download_report", label = tr()$download_report,
+                     class = "btn btn-outline-secondary btn-sm"))
+  })
+
+  output$download_report <- downloadHandler(
+    filename = function() {
+      paste0("mortgage_report_", format(Sys.Date(), "%Y%m%d"), ".pdf")
+    },
+    content = function(file) {
+      tryCatch({
+        withProgress(message = tr()$report_generating, value = 0.3, {
+          rp <- build_report_params(
+            t = tr(), p = params(),
+            roi = roi(), tax = tax(),
+            sens_oc = sens_oc(), sens_rt = sens_rt(),
+            hold = hold_an())
+          setProgress(0.5)
+          temp_pdf <- tempfile(fileext = ".pdf")
+          render_report(rp, temp_pdf)
+          file.copy(temp_pdf, file, overwrite = TRUE)
+          setProgress(1)
+        })
+      }, error = function(e) {
+        showNotification(
+          paste0(tr()$report_error, "\n", conditionMessage(e)),
+          type = "error", duration = 15)
+      })
+    }
+  )
+
+  # ============================================================================
   # TABS
   # ============================================================================
   output$ui_tabs <- renderUI({
@@ -300,9 +383,9 @@ server <- function(input, output, session) {
             h5(t$lbl_pretax), h3(textOutput("ov_irr_pre")))),
           column(4, div(class = "metric-card", style = "background:#d1ecf1;",
             h5(t$lbl_aftertax), h3(textOutput("ov_irr_post")))),
-          column(4, div(class = "metric-card", style = "background:#fce4ec;",
-            h5(t$lbl_cg_tax), h3(textOutput("ov_cgtax"))))
+          column(4, uiOutput("ov_cgtax_card"))
         ),
+        uiOutput("ui_cg_note"),
         h5(t$overview_summary), uiOutput("ui_summary_table"), br(),
         fluidRow(
           column(6, plotlyOutput("pl_sens_oc",   height = "340px")),
@@ -453,7 +536,60 @@ server <- function(input, output, session) {
   # ============================================================================
   output$ov_irr_pre  <- renderText(paste0(roi()$irr, "%"))
   output$ov_irr_post <- renderText(paste0(tax()$irr_after_tax, "%"))
-  output$ov_cgtax    <- renderText(fmt_eur(tax()$capital_gains_tax))
+
+  # ---- Dynamic CG tax metric card (changes color) ----
+  output$ov_cgtax_card <- renderUI({
+    t <- tr(); tx <- tax(); p <- params()
+    cg <- tx$capital_gains_tax
+    exempt <- (p$hold_years >= 10)
+    if (exempt) {
+      bg <- "#eafaf1"; clr <- "#1e8449"
+      lbl <- paste0("\u2705 ", t$lbl_cg_tax)
+    } else if (cg > 0) {
+      bg <- "#fdecea"; clr <- "#c0392b"
+      lbl <- paste0("\u26A0\uFE0F ", t$lbl_cg_tax)
+    } else {
+      bg <- "#fce4ec"; clr <- "#666"
+      lbl <- t$lbl_cg_tax
+    }
+    div(class = "metric-card", style = paste0("background:", bg, ";"),
+      h5(style = paste0("color:", clr, ";"), lbl),
+      h3(style = paste0("color:", clr, ";"),
+         if (exempt) "0 \u20AC" else fmt_eur(cg)))
+  })
+
+  # ---- CG status banner (overview) ----
+  output$ui_cg_note <- renderUI({
+    t <- tr(); tx <- tax(); p <- params()
+    cg   <- tx$capital_gains_tax
+    gain <- max(0, p$sale_price - p$purchase_price)
+    rate <- p$combined_tax_rate * 100
+    fmt_t <- function(tmpl, ...) {
+      args <- list(...)
+      for (nm in names(args)) tmpl <- gsub(paste0("{", nm, "}"), args[[nm]], tmpl, fixed = TRUE)
+      tmpl
+    }
+    if (p$hold_years >= 10) {
+      # Exempt — show how much saved
+      would_pay <- gain * p$combined_tax_rate
+      detail <- if (would_pay > 0) fmt_t(t$cg_note_exempt_detail, saved = fmt_eur(would_pay)) else ""
+      div(style = "background:linear-gradient(135deg,#eafaf1,#d5f5e3); border-left:4px solid #27ae60; padding:10px 14px; margin:8px 0 12px 0; border-radius:0 6px 6px 0;",
+        tags$div(style = "font-weight:700; font-size:13px; color:#1e8449;", t$cg_note_exempt_title),
+        if (nchar(detail) > 0) tags$div(style = "font-size:12px; color:#2e7d32; margin-top:2px;", detail)
+      )
+    } else if (gain > 0 && cg > 0) {
+      # Taxed — show breakdown
+      detail <- fmt_t(t$cg_note_detail, gain = fmt_eur(gain), rate = rate, tax = fmt_eur(cg))
+      div(style = "background:linear-gradient(135deg,#fdecea,#fef5f3); border-left:4px solid #e74c3c; padding:10px 14px; margin:8px 0 12px 0; border-radius:0 6px 6px 0; box-shadow:0 1px 3px rgba(0,0,0,0.06);",
+        tags$div(style = "font-weight:700; font-size:13px; color:#c0392b;", t$cg_note_deducted),
+        tags$div(style = "font-size:12px; color:#5a3a3a; margin-top:3px;", detail),
+        tags$div(style = "font-size:11px; color:#27ae60; margin-top:5px; font-weight:500;", t$cg_warn_tip)
+      )
+    } else {
+      div(style = "background:#f5f5f5; border-left:4px solid #90a4ae; padding:8px 14px; margin:8px 0 12px 0; border-radius:0 6px 6px 0;",
+        tags$div(style = "font-size:12.5px; color:#666;", t$cg_note_no_gain))
+    }
+  })
 
   output$ui_summary_table <- renderUI({
     t <- tr(); tx <- tax(); p <- params()
