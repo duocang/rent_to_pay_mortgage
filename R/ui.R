@@ -2,9 +2,24 @@
 # UI
 # ==============================================================================
 ui <- fluidPage(
+  title = "Real Estate Investment Calculator - ROI, CoC, Mortgage",
   theme = bs_theme(version = 4, bootswatch = "flatly"),
 
-  tags$head(tags$style(HTML("
+  tags$head(
+    # SEO Meta Tags
+    tags$meta(name = "description", content = "Free online Real Estate Investment Calculator. Calculate Cash-on-Cash Return, ROI, Mortgage payments, and analyze rental property profitability with tax considerations."),
+    tags$meta(name = "keywords", content = "Real Estate, Investment, Calculator, ROI, Cash on Cash, Mortgage, Rental Property, Airbnb, BRRRR"),
+    tags$meta(name = "author", content = "Your Name or Brand"),
+
+    # Open Graph / Social Media
+    tags$meta(property = "og:title", content = "Real Estate Investment Calculator"),
+    tags$meta(property = "og:description", content = "Analyze rental property deals instantly. Calculate Cash Flow, Cap Rate, and ROI."),
+    tags$meta(property = "og:type", content = "website"),
+
+    # Google Analytics (Uncomment if you have set up www/google-analytics.html)
+    # includeHTML("www/google-analytics.html"),
+
+    tags$style(HTML("
     .well { padding: 10px 15px; }
     .well .form-group {
       display: flex; flex-direction: row; align-items: center; margin-bottom: 5px;
