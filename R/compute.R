@@ -273,6 +273,9 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
   tatcf <- sum(df$After_Tax_CF)
   # Cash-on-Cash Return: year-1 after-tax CF / initial equity
   coc <- if (total_investment > 0) df$After_Tax_CF[1] / total_investment else 0
+  # Average Cash-on-Cash Return: average after-tax CF / initial equity
+  avg_cf <- mean(df$After_Tax_CF)
+  coc_avg <- if (total_investment > 0) avg_cf / total_investment else 0
 
   list(tax_details = df, cashflows = cfs,
        irr_after_tax = round(irr * 100, 2),
@@ -285,6 +288,7 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
        net_sale = round(ns), capital_gains_tax = round(cgt),
        remaining_loan = round(rem),
        coc_return = round(coc * 100, 2),
+       coc_avg_return = round(coc_avg * 100, 2),
        after_tax_profit = round(tatcf + ns - total_investment))
 }
 

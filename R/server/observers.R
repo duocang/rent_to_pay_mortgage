@@ -226,20 +226,61 @@ observeEvent(input$help_mp, {
 # ---- Modal 5: Cash-on-Cash Return ----
 observeEvent(input$help_coc, {
   t <- tr(); tx <- tax(); p <- params()
+  
+  # Year 1 CoC
   yr1cf <- tx$tax_details$After_Tax_CF[1]
+  
+  # Average CoC (New)
+  # Calculate average annual after-tax cash flow over holding period
+  # Note: tax_details has 'After_Tax_CF' for each year.
+  # We should NOT include the final sale proceeds in CoC usually, just operating CF.
+  # compute_tax_analysis returns 'tax_details' where 'After_Tax_CF' includes sale proceeds in final year?
+  # Let's check compute.R.
+  # In compute.R: 
+  #   ycf <- atcf
+  #   if (yr == hold_years) { ... ycf <- ycf + sale... }
+  #   cfs <- c(cfs, ycf)
+  #   rows[[yr]] <- data.frame(..., After_Tax_CF = round(atcf), ...)
+  # 
+  # Wait, in rows[[yr]], 'After_Tax_CF' is 'atcf' which is 'surplus + te'.
+  # It does NOT include the sale proceeds (Net Sale is separate).
+  # So taking mean(tx$tax_details$After_Tax_CF) is correct for Operating CoC.
+  
+  avg_cf <- mean(tx$tax_details$After_Tax_CF)
+  coc_avg <- if (p$total_investment > 0) avg_cf / p$total_investment * 100 else 0
+  
   showModal(modalDialog(title = t$modal_coc_title, size = "l", easyClose = TRUE,
     footer = modalButton(t$mdl_close),
+    
+    # Formula Section
     tags$div(class = "calc-section", t$mdl_formula),
     div(class = "calc-formula", t$mdl_coc_formula),
+    div(class = "calc-formula", t$mdl_coc_avg_formula), # Added avg formula
     div(style = "font-size:12px; color:#777; margin:4px 0 8px 0;", t$mdl_coc_note),
+    
+    # Inputs
     tags$div(class = "calc-section", t$mdl_inputs),
-    stp(t$mdl_coc_yr1cf,  fmt_eur(yr1cf)),
     stp(t$mdl_coc_equity, fmt_eur(p$total_investment)),
-    tags$div(class = "calc-section", t$mdl_steps),
-    stp("CoC", paste0(fmt_eur(yr1cf), " \u00F7 ", fmt_eur(p$total_investment),
-      " = ", tx$coc_return, "%")),
+    stp(t$mdl_coc_yr1cf,  fmt_eur(yr1cf)),
+    stp(t$mdl_coc_avgcf,  fmt_eur(avg_cf)), # Added avg CF input
+    
+    # Steps / Result
     tags$div(class = "calc-section", t$mdl_result),
-    div(class = "calc-result", style = "background:#e8daef; color:#6c3483;",
-        paste0(t$coc_title, " = ", tx$coc_return, "%"))
+    
+    # Result 1: Year 1 CoC
+    div(style="margin-bottom: 5px;",
+      stp("CoC (Year 1)", paste0(fmt_eur(yr1cf), " \u00F7 ", fmt_eur(p$total_investment),
+        " = ", tx$coc_return, "%"))
+    ),
+    div(class = "calc-result", style = "background:#e8daef; color:#6c3483; margin-bottom:10px;",
+        paste0("CoC (Year 1) = ", tx$coc_return, "%")),
+        
+    # Result 2: Average CoC
+    div(style="margin-bottom: 5px;",
+      stp("CoC (Avg)", paste0(fmt_eur(avg_cf), " \u00F7 ", fmt_eur(p$total_investment),
+        " = ", round(coc_avg, 2), "%"))
+    ),
+    div(class = "calc-result", style = "background:#d6eaf8; color:#2e86c1;",
+        paste0("CoC (Avg) = ", round(coc_avg, 2), "%"))
   ))
 })

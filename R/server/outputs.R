@@ -119,7 +119,7 @@ output$ui_metrics <- renderUI({
 })
 output$v_irr    <- renderText({ r <- roi(); req(r); paste0(r$irr, "%") })
 output$v_irr_at <- renderText({ tx <- tax(); req(tx); paste0(tx$irr_after_tax, "%") })
-output$v_coc    <- renderText({ tx <- tax(); req(tx); paste0(tx$coc_return, "%") })
+output$v_coc    <- renderText({ tx <- tax(); req(tx); paste0(tx$coc_avg_return, "%") })
 output$v_profit <- renderText({ tx <- tax(); req(tx); fmt_eur(tx$after_tax_profit) })
 output$v_mp     <- renderText({ r <- roi(); req(r); fmt_eur(r$monthly_payment) })
 
