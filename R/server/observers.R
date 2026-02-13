@@ -27,6 +27,82 @@ observeEvent(input$lang, {
   updateNumericInput(session, "opcost_inflation",    label = t$opcost_inflation)
   updateCheckboxInput(session, "prepay_with_excess", label = t$prepay_with_excess)
   updateActionButton(session,  "calc_btn",           label = t$calc_btn)
+  updateActionButton(session,  "btn_tax_guide",      label = t$btn_tax_guide)
+})
+
+# ---- Modal: Tax Guide (New) ----
+observeEvent(input$btn_tax_guide, {
+  t <- tr()
+  # Use current inputs if possible, otherwise defaults
+  p_salary <- isolate(input$monthly_salary)
+  p_rent_net <- isolate(input$initial_rent) * 12
+  # Simple estimation of deduction for example purpose:
+  # Interest ~ 3.5%, AfA ~ 1.5% of price, OpCost ~ 20% rent
+  # We just use static example logic or simple heuristic here to be illustrative
+  
+  # Heuristic example values
+  ex_salary <- p_salary * 12
+  # Calculate Year-1 Tax Effect based on current inputs (if valid)
+  # We try to use the reactive 'tax()' but it might not be ready if Calc not clicked.
+  # So we'll try-catch or just use current inputs to do a quick calc.
+  
+  # Quick calc for example
+  lang <- isolate(input$lang)
+  if (is.null(lang)) lang <- "CN"
+  
+  m_factor <- if(lang == "CN") 10000 else 1000
+  
+  pp <- isolate(input$purchase_price) * m_factor
+  la <- isolate(input$loan_amount) * m_factor
+  ec <- isolate(input$extra_costs) * m_factor
+  rt <- isolate(input$annual_rate) / 100
+  br <- isolate(input$building_ratio) / 100
+  ar <- isolate(input$afa_rate) / 100
+  oc <- isolate(input$annual_opcost)
+  trate <- isolate(input$combined_tax_rate) / 100
+  
+  # Year 1 Estimate
+  inc <- p_rent_net
+  ded_int <- la * rt
+  ded_afa <- (pp + ec) * br * ar
+  ded_op  <- oc
+  res_rent <- inc - (ded_int + ded_afa + ded_op)
+  
+  is_loss <- res_rent < 0
+  tax_effect <- abs(res_rent) * trate
+  
+  col_res <- if(is_loss) "#27ae60" else "#e74c3c" # Green for refund, Red for pay
+  txt_res <- if(is_loss) paste0("+ ", fmt_eur(tax_effect)) else paste0("- ", fmt_eur(tax_effect))
+  lbl_res <- if(is_loss) t$mdl_tax_refund else t$mdl_tax_pay
+  
+  showModal(modalDialog(
+    title = t$mdl_tax_title, size = "l", easyClose = TRUE,
+    footer = modalButton(t$mdl_close),
+    
+    tags$div(style="font-size:15px; margin-bottom:15px;", t$mdl_tax_intro),
+    
+    tags$div(class = "calc-section", t$mdl_tax_step1),
+    tags$div(style="margin-left:10px;", t$mdl_tax_step1_d),
+    
+    tags$div(class = "calc-section", t$mdl_tax_step2),
+    div(class = "calc-formula", t$mdl_tax_step2_f),
+    div(style="font-size:13px; color:#666;", t$mdl_tax_step2_n),
+    
+    tags$div(class = "calc-section", t$mdl_tax_step3),
+    div(style="margin-bottom:6px;", markdown(t$mdl_tax_case_loss)),
+    div(markdown(t$mdl_tax_case_gain)),
+    
+    tags$div(class = "calc-section", t$mdl_tax_example),
+    div(class = "well", style="background:#f8f9fa; border:1px solid #ddd;",
+      stp(t$mdl_tax_ex_sal, fmt_eur(ex_salary)),
+      stp(t$mdl_tax_ex_rent, fmt_eur(res_rent), 
+          val_style = if(is_loss) "color:#c0392b" else "color:#27ae60"), # Red for loss, Green for profit (Accounting view)
+      hr(),
+      stp(t$mdl_tax_ex_total, fmt_eur(ex_salary + res_rent), val_style="font-weight:700"),
+      hr(),
+      stp(lbl_res, txt_res, val_style = paste0("font-weight:700; font-size:16px; color:", col_res))
+    )
+  ))
 })
 
 # ---- Modal 1: Pre-tax IRR ----

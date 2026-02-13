@@ -86,7 +86,8 @@ tax <- reactive({
     annual_rate = p$annual_rate, loan_term_years = p$loan_term_years,
     hold_years = p$hold_years, initial_rent = p$initial_rent,
     annual_rent_increase = p$annual_rent_increase, sale_price = p$sale_price,
-    total_investment = p$total_investment, building_ratio = p$building_ratio,
+    total_investment = p$total_investment, extra_costs = p$extra_costs,
+    building_ratio = p$building_ratio,
     afa_rate = p$afa_rate, operating_costs = p$operating_costs,
     combined_tax_rate = p$combined_tax_rate,
     prepay_with_excess = p$prepay_with_excess,
@@ -103,7 +104,8 @@ sens_oc <- reactive({
   p <- vp(); req(p)
   compute_sens_opcost(p$purchase_price, p$loan_amount, p$annual_rate,
     p$loan_term_years, p$hold_years, p$initial_rent, p$annual_rent_increase,
-    p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
+    p$sale_price, p$total_investment, p$extra_costs,
+    p$building_ratio, p$afa_rate,
     p$combined_tax_rate, p$prepay_with_excess, p$monthly_utilities,
     p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,
     p$zinsbindung_years, p$refi_rate)
@@ -113,7 +115,8 @@ sens_rt <- reactive({
   p <- vp(); req(p)
   compute_sens_rate(p$purchase_price, p$loan_amount, p$annual_rate,
     p$loan_term_years, p$hold_years, p$initial_rent, p$annual_rent_increase,
-    p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
+    p$sale_price, p$total_investment, p$extra_costs,
+    p$building_ratio, p$afa_rate,
     p$operating_costs, p$combined_tax_rate,
     p$prepay_with_excess, p$monthly_utilities,
     p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,
@@ -124,7 +127,8 @@ hold_an <- reactive({
   p <- vp(); req(p)
   compute_hold_analysis(p$purchase_price, p$loan_amount, p$annual_rate,
     p$loan_term_years, p$initial_rent, p$annual_rent_increase,
-    p$sale_price, p$total_investment, p$building_ratio, p$afa_rate,
+    p$sale_price, p$total_investment, p$extra_costs,
+    p$building_ratio, p$afa_rate,
     p$operating_costs, p$combined_tax_rate,
     p$prepay_with_excess, p$monthly_utilities,
     p$selling_cost_rate, p$vacancy_rate, p$sondertilgung_rate, p$opcost_inflation,

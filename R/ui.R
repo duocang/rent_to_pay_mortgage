@@ -124,6 +124,8 @@ ui <- fluidPage(
       numericInput("sondertilgung_rate", "年提前还贷上限 (%)", 5, step = 1),
       numericInput("opcost_inflation", "运营成本年通胀 (%)", 2, step = 0.5),
       hr(),
+      # New Tax Guide Button
+      actionButton("btn_tax_guide", "📘 税务指南", class = "btn-info btn-sm", style = "width:100%; margin-bottom:10px;"),
       actionButton("calc_btn", "开始计算", class = "btn-primary")
     ),
 

@@ -143,7 +143,7 @@ compute_basic_roi <- function(purchase_price, down_payment, extra_costs,
 compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
                                  loan_term_years, hold_years, initial_rent,
                                  annual_rent_increase, sale_price,
-                                 total_investment,
+                                 total_investment, extra_costs = 0,
                                  building_ratio  = 0.70,
                                  afa_rate        = 0.02,
                                  operating_costs = 5000,
@@ -163,7 +163,9 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
 
   mr  <- annual_rate / 12
   mp  <- annuity_payment(loan_amount, annual_rate, loan_term_years)
-  bv  <- purchase_price * building_ratio
+  # Acquisition cost includes extra costs (Notary, Tax, Agent)
+  acquisition_cost <- purchase_price + extra_costs
+  bv  <- acquisition_cost * building_ratio
   afa <- bv * afa_rate
   annual_prepay_cap <- loan_amount * sondertilgung_rate
   refi_done <- FALSE
@@ -173,6 +175,7 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
   cfs  <- c(-total_investment)
   cum  <- 0
   rows <- vector("list", hold_years)
+  accumulated_afa <- 0
 
   for (yr in seq_len(hold_years)) {
     if (yr > 1) rent <- rent + annual_rent_increase
@@ -229,12 +232,18 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
     surplus <- y_exc - y_oop
     atcf    <- surplus + te
     cum     <- cum + atcf
+    accumulated_afa <- accumulated_afa + afa
 
     ycf <- atcf
     if (yr == hold_years) {
       rem <- max(bal, 0)
       selling_costs <- sale_price * selling_cost_rate
-      cgt <- if (hold_years >= 10) 0 else max(0, sale_price - purchase_price) * combined_tax_rate
+      # Capital Gains Tax logic for Germany (§ 23 EStG)
+      # Gain = Sale Price - Selling Costs - (Acquisition Cost - Accumulated Depreciation)
+      book_value <- acquisition_cost - accumulated_afa
+      gain <- sale_price - selling_costs - book_value
+      cgt <- if (hold_years >= 10) 0 else max(0, gain) * combined_tax_rate
+
       ycf <- ycf + sale_price - selling_costs - rem - cgt
     }
     cfs <- c(cfs, ycf)
@@ -251,8 +260,14 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
   irr  <- compute_irr(cfs)
   rem  <- max(bal, 0)
   selling_costs <- sale_price * selling_cost_rate
-  cgt  <- if (hold_years >= 10) 0 else max(0, sale_price - purchase_price) * combined_tax_rate
+
+  # Recalculate CGT for summary (same logic)
+  book_value <- acquisition_cost - accumulated_afa
+  gain <- sale_price - selling_costs - book_value
+  cgt <- if (hold_years >= 10) 0 else max(0, gain) * combined_tax_rate
+
   ns   <- sale_price - selling_costs - rem - cgt
+
   tref <- sum(df$Tax_Effect[df$Tax_Effect > 0])
   tpay <- sum(abs(df$Tax_Effect[df$Tax_Effect < 0]))
   tatcf <- sum(df$After_Tax_CF)
@@ -277,6 +292,7 @@ compute_tax_analysis <- function(purchase_price, loan_amount, annual_rate,
 compute_sens_opcost <- function(purchase_price, loan_amount, annual_rate,
                                 loan_term_years, hold_years, initial_rent,
                                 annual_rent_increase, sale_price, total_investment,
+                                extra_costs = 0,
                                 building_ratio, afa_rate, combined_tax_rate,
                                 prepay_with_excess = FALSE,
                                 monthly_utilities = 0,
@@ -290,7 +306,8 @@ compute_sens_opcost <- function(purchase_price, loan_amount, annual_rate,
   do.call(rbind, lapply(oc_range, function(oc) {
     r <- compute_tax_analysis(purchase_price, loan_amount, annual_rate,
            loan_term_years, hold_years, initial_rent, annual_rent_increase,
-           sale_price, total_investment, building_ratio, afa_rate, oc,
+           sale_price, total_investment, extra_costs,
+           building_ratio, afa_rate, oc,
            combined_tax_rate, prepay_with_excess, monthly_utilities,
            selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation,
            zinsbindung_years, refi_rate)
@@ -302,6 +319,7 @@ compute_sens_opcost <- function(purchase_price, loan_amount, annual_rate,
 compute_sens_rate <- function(purchase_price, loan_amount, annual_rate,
                               loan_term_years, hold_years, initial_rent,
                               annual_rent_increase, sale_price, total_investment,
+                              extra_costs = 0,
                               building_ratio, afa_rate, operating_costs,
                               combined_tax_rate,
                               prepay_with_excess = FALSE,
@@ -316,7 +334,8 @@ compute_sens_rate <- function(purchase_price, loan_amount, annual_rate,
   do.call(rbind, lapply(rate_range, function(rt) {
     r <- compute_tax_analysis(purchase_price, loan_amount, rt,
            loan_term_years, hold_years, initial_rent, annual_rent_increase,
-           sale_price, total_investment, building_ratio, afa_rate, operating_costs,
+           sale_price, total_investment, extra_costs,
+           building_ratio, afa_rate, operating_costs,
            combined_tax_rate, prepay_with_excess, monthly_utilities,
            selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation,
            zinsbindung_years, refi_rate)
@@ -328,7 +347,8 @@ compute_sens_rate <- function(purchase_price, loan_amount, annual_rate,
 compute_hold_analysis <- function(purchase_price, loan_amount, annual_rate,
                                   loan_term_years, initial_rent,
                                   annual_rent_increase, sale_price,
-                                  total_investment, building_ratio, afa_rate,
+                                  total_investment, extra_costs = 0,
+                                  building_ratio, afa_rate,
                                   operating_costs, combined_tax_rate,
                                   prepay_with_excess = FALSE,
                                   monthly_utilities = 0,
@@ -345,7 +365,8 @@ compute_hold_analysis <- function(purchase_price, loan_amount, annual_rate,
     sp <- purchase_price * (1 + apr)^hy
     r  <- compute_tax_analysis(purchase_price, loan_amount, annual_rate,
             loan_term_years, hy, initial_rent, annual_rent_increase, sp,
-            total_investment, building_ratio, afa_rate, operating_costs,
+            total_investment, extra_costs,
+            building_ratio, afa_rate, operating_costs,
             combined_tax_rate, prepay_with_excess, monthly_utilities,
             selling_cost_rate, vacancy_rate, sondertilgung_rate, opcost_inflation,
             zinsbindung_years, refi_rate)

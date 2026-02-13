@@ -62,5 +62,5 @@ validate_inputs <- function(inp, t) {
 }
 
 # Helper: build step row (for Modals)
-stp <- function(lbl, val) tags$div(class = "calc-step",
-  tags$span(class = "lbl", lbl), tags$span(class = "val", val))
+stp <- function(lbl, val, val_style = NULL) tags$div(class = "calc-step",
+  tags$span(class = "lbl", lbl), tags$span(class = "val", style = val_style, val))
