@@ -79,6 +79,38 @@ ui <- fluidPage(
       $('.lang-btn').removeClass('active');
       $(this).addClass('active');
     });
+
+    // Auto-collapse logic for advanced params
+    var advTimer;
+    $(document).on('click', '#adv_toggle_btn', function() {
+      var $panel = $('#adv_params_panel');
+      var $icon = $(this).find('i');
+      if ($panel.is(':visible')) {
+        $panel.slideUp();
+        $icon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+      } else {
+        $panel.slideDown();
+        $icon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+        // Reset timer on open
+        resetAdvTimer();
+      }
+    });
+
+    function resetAdvTimer() {
+      clearTimeout(advTimer);
+      advTimer = setTimeout(function() {
+        var $panel = $('#adv_params_panel');
+        if ($panel.is(':visible')) {
+          $panel.slideUp();
+          $('#adv_toggle_btn i').removeClass('fa-chevron-up').addClass('fa-chevron-down');
+        }
+      }, 5000); // 5 seconds
+    }
+
+    // Reset timer on interaction with inputs inside the panel
+    $(document).on('input change click', '#adv_params_panel input', function() {
+      resetAdvTimer();
+    });
   "))),
 
   # ---- Language switcher ----
@@ -114,15 +146,25 @@ ui <- fluidPage(
       checkboxInput("prepay_with_excess", "多余租金自动提前还贷", value = FALSE),
       hr(),
       tags$div(class = "sec-hdr", uiOutput("sec3", inline = TRUE)),
-      numericInput("monthly_salary", "月薪·税前 (元)", 5500, step = 100),
-      numericInput("combined_tax_rate", "综合边际税率 (%)", 47.5, step = 0.5),
-      numericInput("building_ratio", "建筑物占比 (%)", 70, step = 5),
-      numericInput("annual_opcost", "年运营成本 (元)", 5000, step = 500),
-      numericInput("afa_rate", "折旧率 AfA (%)", 2, step = 0.5),
-      numericInput("selling_cost_rate", "卖房成本 (%)", 3, step = 0.5),
-      numericInput("vacancy_rate", "空置率 (%)", 0, step = 1),
-      numericInput("sondertilgung_rate", "年提前还贷上限 (%)", 5, step = 1),
-      numericInput("opcost_inflation", "运营成本年通胀 (%)", 2, step = 0.5),
+
+      # Advanced Parameters Toggle Header
+      tags$div(id = "adv_toggle_btn", style = "cursor:pointer; text-align:center; padding:5px; background:#f8f9fa; border:1px solid #eee; border-radius:4px; margin-bottom:8px;",
+        tags$i(class = "fa fa-chevron-down", style = "color:#95a5a6; font-size:12px;"),
+        uiOutput("adv_badges", inline = TRUE) # Badges will be rendered here
+      ),
+
+      # Collapsible Panel
+      tags$div(id = "adv_params_panel", style = "display:none; padding:10px; border:1px solid #eee; border-top:none; border-radius:0 0 4px 4px; margin-top:-9px; background:#fff;",
+        numericInput("monthly_salary", "月薪·税前 (元)", 5500, step = 100),
+        numericInput("combined_tax_rate", "综合边际税率 (%)", 47.5, step = 0.5),
+        numericInput("building_ratio", "建筑物占比 (%)", 70, step = 5),
+        numericInput("annual_opcost", "年运营成本 (元)", 5000, step = 500),
+        numericInput("afa_rate", "折旧率 AfA (%)", 2, step = 0.5),
+        numericInput("selling_cost_rate", "卖房成本 (%)", 3, step = 0.5),
+        numericInput("vacancy_rate", "空置率 (%)", 0, step = 1),
+        numericInput("sondertilgung_rate", "年提前还贷上限 (%)", 5, step = 1),
+        numericInput("opcost_inflation", "运营成本年通胀 (%)", 2, step = 0.5)
+      ),
       hr(),
       # New Tax Guide Button
       actionButton("btn_tax_guide", "📘 税务指南", class = "btn-info btn-sm", style = "width:100%; margin-bottom:10px;"),

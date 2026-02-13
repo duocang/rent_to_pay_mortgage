@@ -8,6 +8,41 @@ output$sec2 <- renderUI(tr()$sec_rental)
 output$sec3 <- renderUI(tr()$sec_tax)
 output$ui_title <- renderUI(titlePanel(tr()$title))
 
+# ---- Advanced Parameters Badges (Dynamic) ----
+output$adv_badges <- renderUI({
+  t <- tr()
+  # Define list of advanced parameters to show
+  # Format: list(input_id, label, unit)
+  adv_items <- list(
+    list("monthly_salary", t$monthly_salary, ""),
+    list("combined_tax_rate", t$combined_tax_rate, "%"),
+    list("building_ratio", t$building_ratio, "%"),
+    list("annual_opcost", t$annual_opcost, ""),
+    list("afa_rate", t$afa_rate, "%"),
+    list("selling_cost_rate", t$selling_cost_rate, "%"),
+    list("vacancy_rate", t$vacancy_rate, "%"),
+    list("sondertilgung_rate", t$sondertilgung_rate, "%"),
+    list("opcost_inflation", t$opcost_inflation, "%")
+  )
+
+  badges <- lapply(adv_items, function(item) {
+    val <- input[[item[[1]]]]
+    if (is.null(val)) return(NULL)
+
+    # Extract short label (remove text in parens)
+    lbl <- gsub("\\s*\\(.*\\)", "", item[[2]])
+
+    # Format value
+    val_str <- paste0(val, item[[3]])
+
+    tags$span(style="display:inline-block; font-size:10px; padding:2px 6px; margin:2px; background:#e9ecef; border-radius:10px; color:#495057; border:1px solid #ced4da;",
+      tags$b(lbl), ": ", val_str
+    )
+  })
+
+  tagList(badges)
+})
+
 # ---- Hold period alert (§23 EStG) ----
 output$hold_years_alert <- renderUI({
   t <- tr(); hy <- input$hold_years
@@ -56,17 +91,30 @@ output$hold_years_alert <- renderUI({
 output$ui_metrics <- renderUI({
   t <- tr()
   help <- function(id) actionButton(id, "?", class = "help-btn")
-  fluidRow(
-    column(3, div(class = "metric-card", style = "background:#d4edda;",
-      help("help_irr"), h5(t$irr_title), h3(textOutput("v_irr")))),
-    column(2, div(class = "metric-card", style = "background:#d1ecf1;",
-      help("help_irr_at"), h5(t$irr_aftertax_title), h3(textOutput("v_irr_at")))),
-    column(2, div(class = "metric-card", style = "background:#e8daef;",
-      help("help_coc"), h5(t$coc_title), h3(textOutput("v_coc")))),
-    column(3, div(class = "metric-card", style = "background:#fff3cd;",
-      help("help_profit"), h5(t$total_profit_title), h3(textOutput("v_profit")))),
-    column(2, div(class = "metric-card", style = "background:#f8d7da;",
-      help("help_mp"), h5(t$monthly_payment_title), h3(textOutput("v_mp"))))
+
+  # 使用 Flexbox 布局实现等宽
+  # flex: 1 确保每个子元素平分空间
+  # gap: 10px 设置卡片间距
+  div(style = "display: flex; gap: 10px; margin-bottom: 10px;",
+    div(style = "flex: 1; min-width: 0;",
+      div(class = "metric-card", style = "background:#d4edda; height: 100%;",
+        help("help_irr"), h5(t$irr_title), h3(textOutput("v_irr")))),
+
+    div(style = "flex: 1; min-width: 0;",
+      div(class = "metric-card", style = "background:#d1ecf1; height: 100%;",
+        help("help_irr_at"), h5(t$irr_aftertax_title), h3(textOutput("v_irr_at")))),
+
+    div(style = "flex: 1; min-width: 0;",
+      div(class = "metric-card", style = "background:#e8daef; height: 100%;",
+        help("help_coc"), h5(t$coc_title), h3(textOutput("v_coc")))),
+
+    div(style = "flex: 1; min-width: 0;",
+      div(class = "metric-card", style = "background:#fff3cd; height: 100%;",
+        help("help_profit"), h5(t$total_profit_title), h3(textOutput("v_profit")))),
+
+    div(style = "flex: 1; min-width: 0;",
+      div(class = "metric-card", style = "background:#f8d7da; height: 100%;",
+        help("help_mp"), h5(t$monthly_payment_title), h3(textOutput("v_mp"))))
   )
 })
 output$v_irr    <- renderText({ r <- roi(); req(r); paste0(r$irr, "%") })
